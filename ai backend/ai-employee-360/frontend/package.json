@@ -1,0 +1,11 @@
+{
+  "name": "ai-employee-360-zet-webtab",
+  "version": "1.0.0",
+  "description": "Zoho Extension Toolkit (ZET) Web Tab widget for Zoho People with Catalyst Serverless backend",
+  "scripts": {
+    "start": "zet run",
+    "pack": "zet pack"
+  },
+  "author": "karthickbala112@gmail.com",
+  "license": "ISC"
+}

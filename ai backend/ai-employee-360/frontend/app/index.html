@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Employee 360 - Realtime Zoho People Intelligence</title>
+  <meta name="description" content="AI Employee 360 intelligence platform querying live, real-time employee data directly from Zoho People." />
+  <meta property="og:title" content="AI Employee 360 - Realtime Zoho People Intelligence" />
+  <meta property="og:description" content="AI Employee 360 intelligence platform querying live, real-time employee data directly from Zoho People." />
+
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="topbar">
+    <div style="display:flex; align-items:center; gap:0.85rem;">
+      <div style="width:36px; height:36px; border-radius:8px; background:linear-gradient(135deg, #4f46e5, #7c3aed); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:1.1rem; box-shadow:0 2px 8px rgba(79,70,229,0.4);">
+        360
+      </div>
+      <div>
+        <div style="font-weight:700; font-size:1.05rem; letter-spacing:-0.01em; color:#fff;">
+          AI Employee 360 &bull; <span style="font-size:0.85rem; color:#818cf8; font-weight:500;">Live Zoho People Sync</span>
+        </div>
+        <div style="font-size:0.75rem; color:#94a3b8;">
+          VSK HR Solution Private Limited &bull; Portal ID: 60076299713
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:0.75rem;">
+      <button id="openZohoConnectBtn" class="btn-secondary" style="display:flex; align-items:center; gap:0.45rem; font-size:0.8rem; padding:0.4rem 0.8rem;">
+        <span id="zohoLiveDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;"></span>
+        <span id="zohoLiveLabel">Zoho People: Connect Token</span>
+      </button>
+
+      <div id="healthBadge" style="font-size:0.75rem; display:flex; align-items:center; gap:0.4rem; background:#1e293b; padding:0.35rem 0.75rem; border-radius:9999px; border:1px solid #334155;">
+        <span>Checking backend...</span>
+      </div>
+      <button id="openRawBtn" class="btn-secondary">View Raw API JSON</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-wrapper">
+    <!-- Live Sync Alert Notification -->
+    <div id="liveSyncNotice" style="display:none; background:rgba(30,41,59,0.7); border:1px solid #3b82f6; border-radius:8px; padding:0.75rem 1rem; margin-bottom:1.25rem; font-size:0.85rem; display:flex; align-items:center; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span style="font-size:1.1rem;">⚡</span>
+        <div>
+          <strong id="liveNoticeTitle" style="color:#93c5fd;">Real-Time Zoho People Status:</strong>
+          <span id="liveSyncMessage" style="color:#cbd5e1; margin-left:0.35rem;">Connecting to Zoho People...</span>
+        </div>
+      </div>
+      <button id="noticeActionBtn" class="btn-primary" style="font-size:0.75rem; padding:0.3rem 0.75rem;">Configure Zoho Token</button>
+    </div>
+
+    <!-- Control Bar -->
+    <div class="control-bar">
+      <div class="employee-input-group">
+        <label for="empIdInput" class="input-label">Zoho Employee ID / Record ID:</label>
+        <input type="text" id="empIdInput" value="OWN01" class="text-input" placeholder="e.g. OWN01, 101, or numeric record ID" />
+        <button id="fetchEmpBtn" class="btn-primary">Query Live 360</button>
+        <button id="browseDirectoryBtn" class="btn-secondary" style="font-size:0.8rem; padding:0.45rem 0.85rem;">Browse Live Directory</button>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:1rem; font-size:0.8rem; color:#94a3b8;">
+        <div>
+          <span style="font-size:0.7rem; text-transform:uppercase; color:#64748b; margin-right:0.35rem;">Backend:</span>
+          <select id="backendSelect" style="background:#0b1120; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:0.25rem 0.5rem; font-size:0.75rem;">
+            <option value="local" selected>Local Dev Proxy (Port 3000)</option>
+            <option value="cloud">Catalyst Cloud (Serverless)</option>
+          </select>
+        </div>
+        <span id="activeBackendDisplay" class="badge-tag badge-portal">Local Dev Proxy</span>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <nav class="tabs-nav">
+      <button class="tab-link active" data-tab="canonical">Canonical 360</button>
+      <button class="tab-link" data-tab="summary">Executive AI Summary</button>
+      <button class="tab-link" data-tab="insights">Strategic Insights</button>
+      <button class="tab-link" data-tab="timeline">Timeline & Milestones</button>
+      <button class="tab-link" data-tab="ask">&#10024; Ask HR (AI)</button>
+    </nav>
+
+    <!-- Tab 1: Canonical 360 -->
+    <section id="pane-canonical" class="tab-pane">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="title">Calculated Tenure</div>
+          <div id="metricTenure" class="value">—</div>
+          <div class="subtitle">From Zoho Date of Joining</div>
+        </div>
+        <div class="metric-card">
+          <div class="title">Attendance Rate</div>
+          <div id="metricAttendance" class="value">—</div>
+          <div class="subtitle">Zoho Cycle Attendance %</div>
+        </div>
+        <div class="metric-card">
+          <div class="title">Leave Utilization</div>
+          <div id="metricLeave" class="value">—</div>
+          <div class="subtitle">Zoho Entitled vs Taken</div>
+        </div>
+        <div class="metric-card">
+          <div class="title">Performance Rating</div>
+          <div id="metricRating" class="value">—</div>
+          <div class="subtitle">Zoho Appraisal Score</div>
+        </div>
+      </div>
+
+      <div class="content-grid">
+        <!-- Profile -->
+        <div class="content-box">
+          <div class="content-box-header">
+            <h3>Employee Profile</h3>
+            <span id="badgeProfileSource" class="badge-tag badge-cloud">Zoho People Live</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:0.85rem; font-size:0.85rem;">
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Full Name</span>
+              <strong id="fieldFullName" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Work Email</span>
+              <strong id="fieldEmail" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Designation</span>
+              <strong id="fieldJobTitle" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Work Location</span>
+              <strong id="fieldLocation" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Department</span>
+              <strong id="fieldDept" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Reporting Manager</span>
+              <strong id="fieldManager" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Date of Joining</span>
+              <strong id="fieldDoj" style="color:#f8fafc;">—</strong>
+            </div>
+            <div>
+              <span style="color:#64748b; font-size:0.75rem; display:block;">Employment Status</span>
+              <strong id="fieldStatus" style="color:#f8fafc;">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Evidence Chain -->
+        <div class="content-box">
+          <div class="content-box-header">
+            <h3>Real-Time Zoho Evidence</h3>
+            <span id="evidenceCount" class="badge-tag badge-portal">0 Source Records</span>
+          </div>
+          <p style="font-size:0.8rem; color:#94a3b8; margin-bottom:0.75rem;">
+            Every attribute displayed is verified directly against Zoho People Form APIs with zero synthetic data.
+          </p>
+          <div id="evidenceList" style="max-height:260px; overflow-y:auto; padding-right:0.4rem;">
+            <div style="color:#64748b; font-style:italic;">Querying live Zoho People record...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Executive AI Summary -->
+    <section id="pane-summary" class="tab-pane" style="display:none;">
+      <div class="content-box">
+        <div class="content-box-header">
+          <h3>Executive AI Summary</h3>
+          <span id="summaryModelBadge" class="badge-tag badge-cloud">Gemini Synthesis</span>
+        </div>
+        <p style="font-size:0.8rem; color:#94a3b8; margin-bottom:1rem;">
+          Synthesized by Gemini strictly from real-time Zoho People verified attributes. Zero hallucination policy enforced.
+        </p>
+        <div id="summaryTextBox" style="background:#090e17; border:1px solid #1e293b; border-radius:8px; padding:1.25rem; font-size:0.9rem; line-height:1.6; color:#e2e8f0; min-height:140px;">
+          <p style="color:#94a3b8; font-style:italic;">Click to load executive summary...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Strategic Insights -->
+    <section id="pane-insights" class="tab-pane" style="display:none;">
+      <div class="content-box">
+        <div class="content-box-header">
+          <h3>Strategic Talent Insights</h3>
+          <span class="badge-tag badge-portal">Real-Time Evidence</span>
+        </div>
+        <div id="insightsGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; margin-top:1rem;">
+          <div style="color:#94a3b8;">Loading strategic insights...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 4: Timeline -->
+    <section id="pane-timeline" class="tab-pane" style="display:none;">
+      <div class="content-box">
+        <div class="content-box-header">
+          <h3>Chronological Milestones</h3>
+          <span class="badge-tag badge-cloud">Zoho Events</span>
+        </div>
+        <div id="timelineList" class="timeline-container" style="margin-top:1rem;">
+          <div style="color:#94a3b8;">Loading milestones...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 5: Ask HR (AI) -->
+    <section id="pane-ask" class="tab-pane" style="display:none;">
+      <div class="content-box">
+        <div class="content-box-header">
+          <h3>Ask HR Intelligence</h3>
+          <span class="badge-tag badge-portal">Live Evidence Query</span>
+        </div>
+        <p style="font-size:0.8rem; color:#94a3b8; margin-bottom:1rem;">
+          Ask any specific question regarding this employee's verified Zoho People data. Answers cite exact source fields.
+        </p>
+
+        <form id="askHrForm" style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+          <input type="text" id="hrQuestionInput" class="text-input" style="flex:1;" placeholder="e.g., What is this employee's verified department and tenure?" />
+          <button type="submit" id="submitAskBtn" class="btn-primary">Ask AI</button>
+        </form>
+
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+          <button type="button" class="preset-q btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.6rem;">What is this employee's tenure and date of joining?</button>
+          <button type="button" class="preset-q btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.6rem;">What are the documented performance ratings?</button>
+          <button type="button" class="preset-q btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.6rem;">What are this employee's development areas?</button>
+        </div>
+
+        <div id="askResultBox" style="display:none; background:#090e17; border:1px solid #1e293b; border-radius:8px; padding:1.25rem;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+            <strong style="color:#818cf8; font-size:0.85rem;">Answer</strong>
+            <div style="display:flex; gap:0.5rem;">
+              <span id="askTypeBadge" class="badge-tag badge-cloud">Fact</span>
+              <span id="askConfBadge" class="badge-tag badge-portal">High Confidence</span>
+            </div>
+          </div>
+          <div id="askAnswerText" style="font-size:0.9rem; color:#f8fafc; line-height:1.6; margin-bottom:1rem;"></div>
+          <div id="askEvSection" style="border-top:1px solid #1e293b; padding-top:0.75rem;">
+            <div style="font-size:0.75rem; color:#64748b; text-transform:uppercase; margin-bottom:0.4rem;">Cited Zoho People Source Evidence:</div>
+            <ul id="askEvList" style="font-size:0.8rem; color:#94a3b8; padding-left:1.2rem;"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Zoho People Connection Modal -->
+  <div id="zohoConnectModal" class="raw-modal" style="display:none;">
+    <div class="raw-modal-content" style="max-width:620px;">
+      <div class="raw-modal-header">
+        <h3>Connect Real-Time Zoho People Portal</h3>
+        <button id="closeZohoConnectBtn" style="background:transparent; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer;">&times;</button>
+      </div>
+      <div style="padding:1.25rem; font-size:0.85rem; color:#cbd5e1; display:flex; flex-direction:column; gap:1.1rem;">
+        <p style="margin:0; line-height:1.5;">
+          To query <strong>100% real-time data</strong> with zero mock data, provide your live Zoho People OAuth token.
+          This connects directly to <strong>VSK HR Solution Private Limited</strong> (Portal ID: 60076299713).
+        </p>
+
+        <div>
+          <label style="display:block; font-weight:600; color:#fff; margin-bottom:0.35rem;">Zoho People OAuth Access Token (<code style="color:#a5b4fc;">Zoho-oauthtoken</code>)</label>
+          <input type="password" id="zohoTokenInput" class="text-input" style="width:100%; box-sizing:border-box; font-family:monospace;" placeholder="Paste Zoho-oauthtoken (e.g. 1000.xxxx...)" />
+          <span style="font-size:0.75rem; color:#94a3b8; display:block; margin-top:0.3rem;">
+            Required Scopes: <code>ZohoPeople.employee.ALL</code>, <code>ZohoPeople.attendance.ALL</code>, <code>ZohoPeople.leave.ALL</code>
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+          <div>
+            <label style="display:block; font-weight:600; color:#fff; margin-bottom:0.35rem;">Data Center</label>
+            <select id="zohoDcSelect" style="width:100%; background:#0b1120; border:1px solid #334155; color:#cbd5e1; border-radius:6px; padding:0.45rem; font-size:0.85rem;">
+              <option value="in" selected>India (people.zoho.in)</option>
+              <option value="com">Global (people.zoho.com)</option>
+              <option value="eu">Europe (people.zoho.eu)</option>
+              <option value="com_au">Australia (people.zoho.com.au)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font-weight:600; color:#fff; margin-bottom:0.35rem;">Organization Portal</label>
+            <input type="text" value="VSK HR Solution (60076299713)" disabled style="width:100%; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:6px; padding:0.45rem; font-size:0.85rem;" />
+          </div>
+        </div>
+
+        <div id="zohoConnectStatusBox" style="display:none; padding:0.75rem; border-radius:6px; font-size:0.8rem;"></div>
+
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem;">
+          <button id="clearZohoTokenBtn" class="btn-secondary" style="font-size:0.8rem;">Disconnect / Clear</button>
+          <button id="saveZohoTokenBtn" class="btn-primary" style="font-size:0.8rem;">Test & Save Live Token</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Directory Modal -->
+  <div id="directoryModal" class="raw-modal" style="display:none;">
+    <div class="raw-modal-content" style="max-width:750px;">
+      <div class="raw-modal-header">
+        <h3>Live Zoho People Employee Directory</h3>
+        <button id="closeDirectoryBtn" style="background:transparent; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer;">&times;</button>
+      </div>
+      <div style="padding:1.25rem;">
+        <p style="font-size:0.85rem; color:#94a3b8; margin-top:0; margin-bottom:1rem;">
+          Select any real employee from your Zoho People organization to load their live 360 profile.
+        </p>
+        <div id="directoryListContainer" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="color:#94a3b8; padding:1rem; text-align:center;">Loading live employees from Zoho People...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw JSON Inspector Modal -->
+  <div id="rawJsonModal" class="raw-modal" style="display:none;">
+    <div class="raw-modal-content">
+      <div class="raw-modal-header">
+        <h3 id="rawJsonEndpoint">GET /v1/employees/OWN01/360</h3>
+        <button id="closeRawBtn" style="background:transparent; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer;">&times;</button>
+      </div>
+      <pre id="rawJsonContent" class="raw-json-box"></pre>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/zohoPeopleSdk.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

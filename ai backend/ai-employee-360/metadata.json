@@ -1,0 +1,8 @@
+{
+  "name": "AI Employee 360",
+  "description": "AI Employee 360 intelligence platform on Zoho Catalyst Advanced I/O function",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
