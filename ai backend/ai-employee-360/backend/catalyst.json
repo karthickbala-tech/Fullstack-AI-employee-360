@@ -1,9 +1,0 @@
-{
-  "functions": {
-    "targets": [
-      "employee_360_ai_function"
-    ],
-    "ignore": [],
-    "source": "functions"
-  }
-}
