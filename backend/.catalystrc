@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "67649000000040041",
+      "name": "Employee360-AI",
+      "domain": {
+        "id": "50046274573",
+        "name": "employee360-ai-60085182165.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60085182165",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}

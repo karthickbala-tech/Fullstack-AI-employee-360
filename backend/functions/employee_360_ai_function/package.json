@@ -1,0 +1,11 @@
+{
+	"name": "employee_360_ai_function",
+	"version": "1.0.0",
+	"main": "index.js",
+	"author": "karthickbala112@gmail.com",
+	"dependencies": {
+		"@zcatalyst/auth": "latest",
+		"@zcatalyst/cache": "latest",
+		"zcatalyst-sdk-node": "^3.3.0"
+	}
+}

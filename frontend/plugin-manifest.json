@@ -1,0 +1,24 @@
+{
+  "locale": [
+    "en"
+  ],
+  "service": "PEOPLE",
+  "whiteListedDomains": [],
+  "modules": {
+    "widgets": [
+      {
+        "location": "people.home",
+        "name": "Zoho People Extension",
+        "url": "/app/index.html",
+        "logo": ""
+      }
+    ]
+  },
+  "config": [],
+  "connectors": [],
+  "cspDomains": {
+  "connect-src": [
+    "https://employee360-ai-60085182165.development.catalystserverless.in"
+  ]
+}
+}
