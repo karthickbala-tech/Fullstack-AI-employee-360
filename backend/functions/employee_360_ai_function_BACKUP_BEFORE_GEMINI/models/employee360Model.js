@@ -38,17 +38,17 @@ class Employee360Model {
       },
       attendance: {
         summaryPeriod: null,
-        totalWorkingDays: null,
-        presentDays: null,
-        absentDays: null,
-        lateDays: null,
-        attendancePercentage: null,
+        totalWorkingDays: 0,
+        presentDays: 0,
+        absentDays: 0,
+        lateDays: 0,
+        attendancePercentage: 0,
         recentPunches: []
       },
       leave: {
         balance: [],
-        takenThisYear: null,
-        pendingApprovals: null,
+        takenThisYear: 0,
+        pendingApprovals: 0,
         recentRequests: []
       },
       performance: {
@@ -60,9 +60,9 @@ class Employee360Model {
         reviewStatus: null
       },
       goals: {
-        totalGoals: null,
-        completedGoals: null,
-        inProgressGoals: null,
+        totalGoals: 0,
+        completedGoals: 0,
+        inProgressGoals: 0,
         items: []
       },
       skills: {
@@ -81,9 +81,9 @@ class Employee360Model {
         aspirations: null
       },
       lifecycle: {
-        onboardingCompleted: null,
-        currentStage: null,
-        exitInitiated: null,
+        onboardingCompleted: true,
+        currentStage: 'Active',
+        exitInitiated: false,
         exitDate: null
       },
       deterministicMetrics: {},

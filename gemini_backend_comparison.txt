@@ -1,0 +1,1220 @@
+
+============================================================
+FILE: config\constants.js
+============================================================
+REAL HASH:   5C446F647F3E0EC73470614E0A19AD81A5B9E2B3DD52627237169D22453FA30A
+GEMINI HASH: B5B7E5A244D9419B204F004BDA8D2DD71E2C3EFE0BC5123AEB93B90BC6ABFF37
+STATUS: DIFFERENT
+
+
+InputObject                                                     SideIndicator
+-----------                                                     -------------
+const CAPABILITY_STATUS = {                                     =>           
+  VERIFIED: 'VERIFIED',                                         =>           
+  PARTIAL: 'PARTIAL',                                           =>           
+  BLOCKED_BY_SOURCE_CAPABILITY: 'BLOCKED_BY_SOURCE_CAPABILITY', =>           
+  FUTURE_SCOPE: 'FUTURE_SCOPE'                                  =>           
+                                                                =>           
+  CAPABILITY_STATUS,                                            =>           
+};                                                              =>           
+
+
+
+
+============================================================
+FILE: models\employee360Model.js
+============================================================
+REAL HASH:   11366FE271DD626BF7A266B5D3E13CAAE9027ABDDEC54208D8830162BEE94FF2
+GEMINI HASH: 1C7D2FAAA5FA8610054C1D1C7BD6BDEA3605A074EEBCB9342F9A16322F17419A
+STATUS: DIFFERENT
+
+
+InputObject                         SideIndicator
+-----------                         -------------
+        totalWorkingDays: null,     =>           
+        presentDays: null,          =>           
+        absentDays: null,           =>           
+        lateDays: null,             =>           
+        attendancePercentage: null, =>           
+        takenThisYear: null,        =>           
+        pendingApprovals: null,     =>           
+        totalGoals: null,           =>           
+        completedGoals: null,       =>           
+        inProgressGoals: null,      =>           
+        onboardingCompleted: null,  =>           
+        currentStage: null,         =>           
+        exitInitiated: null,        =>           
+      capabilities: {},             =>           
+        totalWorkingDays: 0,        <=           
+        presentDays: 0,             <=           
+        absentDays: 0,              <=           
+        lateDays: 0,                <=           
+        attendancePercentage: 0,    <=           
+        takenThisYear: 0,           <=           
+        pendingApprovals: 0,        <=           
+        totalGoals: 0,              <=           
+        completedGoals: 0,          <=           
+        inProgressGoals: 0,         <=           
+        onboardingCompleted: true,  <=           
+        currentStage: 'Active',     <=           
+        exitInitiated: false,       <=           
+
+
+
+
+============================================================
+FILE: connectors\zohoPeople\zohoPeopleEnvironment.js
+============================================================
+REAL HASH:   9850ABE109B70D594A5AB5D2FBB05BFDCA72784A3BB4BBB510107E87A056B9F2
+GEMINI HASH: DDF924546478CEC44E1410AA65DC15716E06BFAB2CD81B11D1AB0D4C86FFEADF
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                           S
+                                                                                                                      i
+                                                                                                                      d
+                                                                                                                      e
+                                                                                                                      I
+                                                                                                                      n
+                                                                                                                      d
+                                                                                                                      i
+                                                                                                                      c
+                                                                                                                      a
+                                                                                                                      t
+                                                                                                                      o
+                                                                                                                      r
+-----------                                                                                                           -
+      attendanceReport: `${base}/people/api/attendance/getUserReport`,                                                =
+      leaveRecords: `${base}/people/api/forms/leave/getRecords`,                                                      =
+      performanceSummary: `${base}/people/api/performance/getAppraisalRating`,                                        =
+      orgStructure: `${base}/people/api/orgstructure/getOrgStructure`,                                                =
+      formsList: `${base}/people/api/forms`,                                                                          =
+      formComponents: (formLinkName) => `${base}/people/api/forms/${encodeURIComponent(formLinkName)}/components`,    =
+      formRecords: (formLinkName) => `${base}/people/api/forms/${encodeURIComponent(formLinkName)}/getRecords`,       =
+      formRecordById: (formLinkName) => `${base}/people/api/forms/${encodeURIComponent(formLinkName)}/getRecordByID`, =
+      trainingDetails: `${base}/people/api/training/getTrainingDetails`                                               =
+      performanceSummary: `${base}/people/api/performance/getAppraisalRating`                                         <
+
+
+
+
+============================================================
+FILE: connectors\zohoPeople\zohoPeopleClient.js
+============================================================
+REAL HASH:   432A4D437A3D4AF6A92980581E025CF2467AF1E96308934065B80D9790172E6B
+GEMINI HASH: 2B085BF70C652BBC290BA0974A428472190080FD365773EBCD16FE0E1AE17FB1
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+    this._formsCache = null;                                                                                           
+    this._componentsCache = new Map();                                                                                 
+  _sleep(ms) {                                                                                                         
+    return new Promise(resolve => setTimeout(resolve, ms));                                                            
+   * Dispatches request to Zoho People API with access token from Catalyst Connection.                                 
+   * Includes bounded exponential retry backoff, rate-limit handling, and query param serialization.                   
+    let url = path.startsWith('http') ? path : `${baseUrl}${path}`;                                                    
+    // Append query params if specified                                                                                
+    if (options.params && typeof options.params === 'object') {                                                        
+      const searchParams = new URLSearchParams();                                                                      
+      for (const [key, val] of Object.entries(options.params)) {                                                       
+        if (val !== undefined && val !== null) {                                                                       
+          searchParams.append(key, String(val));                                                                       
+      const qs = searchParams.toString();                                                                              
+      if (qs) {                                                                                                        
+        url += (url.includes('?') ? '&' : '?') + qs;                                                                   
+    const headers = {                                                                                                  
+      'Accept': 'application/json',                                                                                    
+      ...(connectionCredentials.headers || {}),                                                                        
+      ...(options.headers || {})                                                                                       
+    };                                                                                                                 
+    let body = undefined;                                                                                              
+    if (options.formData && typeof options.formData === 'object') {                                                    
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';                                                   
+      const formParams = new URLSearchParams();                                                                        
+      for (const [k, v] of Object.entries(options.formData)) {                                                         
+        if (v !== undefined && v !== null) {                                                                           
+          formParams.append(k, String(v));                                                                             
+        }                                                                                                              
+      body = formParams.toString();                                                                                    
+    } else if (options.body) {                                                                                         
+      if (typeof options.body === 'string') {                                                                          
+        body = options.body;                                                                                           
+      } else {                                                                                                         
+        headers['Content-Type'] = 'application/json';                                                                  
+        body = JSON.stringify(options.body);                                                                           
+      }                                                                                                                
+    const maxRetries = options.maxRetries ?? 2;                                                                        
+    let lastError = null;                                                                                              
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {                                                          
+        const response = await fetch(url, {                                                                            
+          method: options.method || 'GET',                                                                             
+          headers,                                                                                                     
+          body                                                                                                         
+        });                                                                                                            
+        const rawText = await response.text();                                                                         
+        let data = null;                                                                                               
+        try {                                                                                                          
+          data = JSON.parse(rawText);                                                                                  
+        } catch (parseErr) {                                                                                           
+          data = { rawText };                                                                                          
+        }                                                                                                              
+        // Check Zoho-specific error response format                                                                   
+        if (data && data.response && data.response.errors) {                                                           
+          const errObj = data.response.errors;                                                                         
+          const errCode = errObj.code;                                                                                 
+          const errMsg = errObj.message || 'Zoho People API Error';                                                    
+          if (errCode === 7202 || errCode === 7203) {                                                                  
+            const authErr = new ExternalServiceError(`Zoho People Authentication Failed: ${errMsg}`);                  
+            authErr.isAuthError = true;                                                                                
+            authErr.zohoCode = errCode;                                                                                
+            throw authErr;                                                                                             
+          }                                                                                                            
+          // Zoho rate limit code (e.g. 7000 or rate limit exceeded message)                                           
+          const isRateLimit = errCode === 7000 || /limit|throttle/i.test(errMsg);                                      
+          if (isRateLimit && attempt < maxRetries) {                                                                   
+            const delayMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 200, 3000);                         
+            Logger.warn(`Zoho People rate limit encountered (${errCode}). Retrying in ${Math.round(delayMs)}ms...`);   
+            await this._sleep(delayMs);                                                                                
+            continue;                                                                                                  
+          }                                                                                                            
+          const apiErr = new ExternalServiceError(`Zoho People Error (${errCode}): ${errMsg}`);                        
+          apiErr.zohoCode = errCode;                                                                                   
+          apiErr.isRateLimit = isRateLimit;                                                                            
+          throw apiErr;                                                                                                
+        }                                                                                                              
+        // Handle HTTP 429 Too Many Requests                                                                           
+        if (response.status === 429 && attempt < maxRetries) {                                                         
+          const retryHeader = response.headers.get('Retry-After');                                                     
+          const delayMs = retryHeader ? Math.min(Number(retryHeader) * 1000, 5000) : (1000 * Math.pow(2, attempt) + ...
+          Logger.warn(`Zoho People HTTP 429 received. Backing off for ${Math.round(delayMs)}ms...`);                   
+          await this._sleep(delayMs);                                                                                  
+          continue;                                                                                                    
+        }                                                                                                              
+        // Handle transient 502/503/504 errors                                                                         
+        if ([502, 503, 504].includes(response.status) && attempt < maxRetries) {                                       
+          const delayMs = 1000 * Math.pow(2, attempt) + Math.random() * 200;                                           
+          Logger.warn(`Zoho People HTTP ${response.status} transient error. Retrying in ${Math.round(delayMs)}ms...`); 
+          await this._sleep(delayMs);                                                                                  
+          continue;                                                                                                    
+        }                                                                                                              
+        if (!response.ok) {                                                                                            
+          const httpErr = new ExternalServiceError(`Zoho People returned HTTP ${response.status}: ${rawText.slice(0,...
+          httpErr.statusCode = response.status;                                                                        
+          throw httpErr;                                                                                               
+        }                                                                                                              
+                                                                                                                       
+        return data;                                                                                                   
+      } catch (err) {                                                                                                  
+        lastError = err;                                                                                               
+        if (err instanceof ExternalServiceError || err instanceof ConfigurationError) {                                
+          if (err.isAuthError || (!err.isRateLimit && err.statusCode && ![429, 502, 503, 504].includes(err.statusCod...
+            throw err;                                                                                                 
+          }                                                                                                            
+        }                                                                                                              
+        if (attempt < maxRetries) {                                                                                    
+          const delayMs = 1000 * Math.pow(2, attempt) + Math.random() * 200;                                           
+          Logger.warn(`Retrying Zoho People request after failure: ${err.message}. Retrying in ${Math.round(delayMs)...
+          await this._sleep(delayMs);                                                                                  
+        } else {                                                                                                       
+          break;                                                                                                       
+        }                                                                                                              
+      }                                                                                                                
+    }                                                                                                                  
+                                                                                                                       
+    Logger.error('Failed to communicate with Zoho People API after retries', lastError, { url });                      
+    if (lastError instanceof ExternalServiceError || lastError instanceof ConfigurationError) {                        
+      throw lastError;                                                                                                 
+    }                                                                                                                  
+    throw new ExternalServiceError(`Unable to reach Zoho People API: ${lastError?.message || 'Request failed'}`);      
+                                                                                                                       
+   * Reusable discovery method: Lists forms defined in Zoho People                                                     
+  async getForms(context = null) {                                                                                     
+    if (this._formsCache) {                                                                                            
+      return this._formsCache;                                                                                         
+    }                                                                                                                  
+    const dataCenter = context?.dataCenter || this.tenantConfig.dataCenter;                                            
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+      const res = await this.request(endpoints.formsList, { context, dataCenter });                                    
+      const forms = res?.response?.result || res?.result || [];                                                        
+      this._formsCache = Array.isArray(forms) ? forms : [];                                                            
+      return this._formsCache;                                                                                         
+      Logger.warn('Forms discovery failed or unsupported in tenant', { error: err.message });                          
+      return [];                                                                                                       
+    }                                                                                                                  
+  }                                                                                                                    
+                                                                                                                       
+  /**                                                                                                                  
+   * Reusable discovery method: Lists components for a given Zoho People form                                          
+   */                                                                                                                  
+  async getFormComponents(formLinkName, context = null) {                                                              
+    if (!formLinkName) return [];                                                                                      
+    if (this._componentsCache.has(formLinkName)) {                                                                     
+      return this._componentsCache.get(formLinkName);                                                                  
+    }                                                                                                                  
+    const dataCenter = context?.dataCenter || this.tenantConfig.dataCenter;                                            
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+      const url = typeof endpoints.formComponents === 'function'                                                       
+        ? endpoints.formComponents(formLinkName)                                                                       
+        : `${this.getBaseUrl(dataCenter)}/people/api/forms/${encodeURIComponent(formLinkName)}/components`;            
+      const res = await this.request(url, { context, dataCenter });                                                    
+      const components = res?.response?.result || res?.result || [];                                                   
+      const list = Array.isArray(components) ? components : [];                                                        
+      this._componentsCache.set(formLinkName, list);                                                                   
+      return list;                                                                                                     
+      Logger.warn(`Form components discovery failed for "${formLinkName}"`, { error: err.message });                   
+      return [];                                                                                                       
+    }                                                                                                                  
+  }                                                                                                                    
+                                                                                                                       
+  /**                                                                                                                  
+   */                                                                                                                  
+    try {                                                                                                              
+                                                                                                                       
+                                                                                                                       
+    } catch (err) {                                                                                                    
+    }                                                                                                                  
+  }                                                                                                                    
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+   * Dispatches request to Zoho People API with access token from Catalyst Connection                                  
+    const url = path.startsWith('http') ? path : `${baseUrl}${path}`;                                                  
+const headers = {                                                                                                      
+  'Accept': 'application/json',                                                                                        
+  ...(connectionCredentials.headers || {}),                                                                            
+  ...(options.headers || {})                                                                                           
+};                                                                                                                     
+      const response = await fetch(url, {                                                                              
+        method: options.method || 'GET',                                                                               
+        headers,                                                                                                       
+        body: options.body ? JSON.stringify(options.body) : undefined                                                  
+      const rawText = await response.text();                                                                           
+      let data = null;                                                                                                 
+        data = JSON.parse(rawText);                                                                                    
+      } catch (parseErr) {                                                                                             
+        data = { rawText };                                                                                            
+      // Check Zoho-specific error response format                                                                     
+      if (data && data.response && data.response.errors) {                                                             
+        const errObj = data.response.errors;                                                                           
+        const errCode = errObj.code;                                                                                   
+        const errMsg = errObj.message || 'Zoho People API Error';                                                      
+        if (errCode === 7202 || errCode === 7203 || errCode === 7000) {                                                
+          const authErr = new ExternalServiceError(`Zoho People Authentication Failed: ${errMsg}`);                    
+          authErr.isAuthError = true;                                                                                  
+          authErr.zohoCode = errCode;                                                                                  
+          throw authErr;                                                                                               
+        const apiErr = new ExternalServiceError(`Zoho People Error (${errCode}): ${errMsg}`);                          
+        apiErr.zohoCode = errCode;                                                                                     
+        throw apiErr;                                                                                                  
+      if (!response.ok) {                                                                                              
+        const httpErr = new ExternalServiceError(`Zoho People returned HTTP ${response.status}: ${rawText.slice(0, 2...
+        httpErr.statusCode = response.status;                                                                          
+        throw httpErr;                                                                                                 
+      return data;                                                                                                     
+      if (err instanceof ExternalServiceError || err instanceof ConfigurationError) throw err;                         
+      Logger.error('Failed to communicate with Zoho People API', err, { url });                                        
+      throw new ExternalServiceError(`Unable to reach Zoho People API: ${err.message}`);                               
+      });                                                                                                              
+
+
+
+
+============================================================
+FILE: connectors\zohoPeople\zohoPeopleEmployeeService.js
+============================================================
+REAL HASH:   8A0E3A9950AD81BC4072728787A7E07F529FD6973F8774E06FEAE9B7E0143F96
+GEMINI HASH: DD5BAE4A48D3C06CFC46F4FAF2E40214418D60AD9361AC565FD1F99A2756BE58
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+      // If record found, also attempt real-time attendance, leave, and performance                                    
+      let performanceData = null;                                                                                      
+      let trainingData = null;                                                                                         
+      const capabilities = {                                                                                           
+        employee: 'VERIFIED',                                                                                          
+        attendance: 'PARTIAL',                                                                                         
+        leave: 'PARTIAL',                                                                                              
+        performance: 'PARTIAL',                                                                                        
+        goals: 'BLOCKED_BY_SOURCE_CAPABILITY',                                                                         
+        skills: 'PARTIAL',                                                                                             
+        learning: 'BLOCKED_BY_SOURCE_CAPABILITY',                                                                      
+        organisation: 'VERIFIED',                                                                                      
+        career: 'PARTIAL',                                                                                             
+        lifecycle: 'PARTIAL',                                                                                          
+        timeline: 'VERIFIED',                                                                                          
+        evidence: 'VERIFIED'                                                                                           
+          rawRecord.EmployeeID ||                                                                                      
+          rawRecord.EMPLOYEEID ||                                                                                      
+          rawRecord.EmpId ||                                                                                           
+          employeeId;                                                                                                  
+        // Fetch real-time attendance using officially supported POST /people/api/attendance/getUserReport             
+          attendanceData = await this.fetchAttendanceReport(zohoEmpId, rawRecord, context);                            
+          if (attendanceData && attendanceData.recordsCount > 0) {                                                     
+            capabilities.attendance = 'VERIFIED';                                                                      
+          }                                                                                                            
+          Logger.info('Attendance real-time lookup skipped or failed', { error: attErr.message });                     
+          leaveData = await this.fetchLeaveDetails(zohoEmpId, rawRecord, context);                                     
+          if (leaveData && Array.isArray(leaveData.balance) && leaveData.balance.length > 0) {                         
+            capabilities.leave = 'VERIFIED';                                                                           
+          }                                                                                                            
+          Logger.info('Leave real-time lookup skipped or failed', { error: leaveErr.message });                        
+        // Fetch real-time performance rating if available                                                             
+        try {                                                                                                          
+          performanceData = await this.fetchPerformanceRating(zohoEmpId, rawRecord, context);                          
+          if (performanceData && performanceData.overallRating !== null) {                                             
+            capabilities.performance = 'VERIFIED';                                                                     
+          } else {                                                                                                     
+            capabilities.performance = 'BLOCKED_BY_SOURCE_CAPABILITY';                                                 
+          }                                                                                                            
+        } catch (perfErr) {                                                                                            
+          capabilities.performance = 'BLOCKED_BY_SOURCE_CAPABILITY';                                                   
+          Logger.info('Performance real-time lookup skipped', { error: perfErr.message });                             
+        }                                                                                                              
+        // Check training capability                                                                                   
+        try {                                                                                                          
+          trainingData = await this.fetchTrainingDetails(zohoEmpId, rawRecord, context);                               
+          if (trainingData && Array.isArray(trainingData) && trainingData.length > 0) {                                
+            capabilities.learning = 'VERIFIED';                                                                        
+          }                                                                                                            
+        } catch (trainErr) {                                                                                           
+          capabilities.learning = 'BLOCKED_BY_SOURCE_CAPABILITY';                                                      
+        }                                                                                                              
+      };                                                                                                               
+    if (!rawRecord) {                                                                                                  
+      return {                                                                                                         
+        source: 'zoho_people',                                                                                         
+        employeeId,                                                                                                    
+        available: false,                                                                                              
+        error: 'NOT_FOUND',                                                                                            
+        message: `Employee "${employeeId}" not found in Zoho People. Please ensure the employee exists in your Zoho ...
+      };                                                                                                               
+      leave: leaveData,                                                                                                
+      performance: performanceData,                                                                                    
+      training: trainingData,                                                                                          
+      capabilities                                                                                                     
+   * Fetches official Zoho People Attendance User Report using POST /people/api/attendance/getUserReport               
+   * Supports sdate, edate, dateFormat, empId/emailId, and pagination via startIndex                                   
+  async fetchAttendanceReport(zohoEmpId, rawRecord, context = null) {                                                  
+    const now = new Date();                                                                                            
+    const edate = context?.edate || now.toISOString().split('T')[0];                                                   
+    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));                                        
+    const sdate = context?.sdate || thirtyDaysAgo.toISOString().split('T')[0];                                         
+    const dateFormat = 'yyyy-MM-dd';                                                                                   
+    const empId = rawRecord?.EmployeeID || rawRecord?.EMPLOYEEID || rawRecord?.EmpId || String(zohoEmpId);             
+    const emailId = rawRecord?.EmailID || rawRecord?.email;                                                            
+    const baseParams = {                                                                                               
+      sdate,                                                                                                           
+      edate,                                                                                                           
+      dateFormat,                                                                                                      
+      empId                                                                                                            
+    };                                                                                                                 
+                                                                                                                       
+    if (!empId && emailId) {                                                                                           
+      delete baseParams.empId;                                                                                         
+      baseParams.emailId = emailId;                                                                                    
+                                                                                                                       
+    let allReports = [];                                                                                               
+    let startIndex = 1;                                                                                                
+    const pageSize = 100;                                                                                              
+    const maxPages = 5;                                                                                                
+                                                                                                                       
+    for (let page = 0; page < maxPages; page++) {                                                                      
+      const params = {                                                                                                 
+        ...baseParams,                                                                                                 
+        startIndex                                                                                                     
+      };                                                                                                               
+                                                                                                                       
+      const res = await this.client.request(endpoints.attendanceReport, {                                              
+        method: 'POST',                                                                                                
+        params,                                                                                                        
+        context,                                                                                                       
+        dataCenter                                                                                                     
+      });                                                                                                              
+                                                                                                                       
+      const records = res?.response?.result || res?.result || res;                                                     
+      let pageList = [];                                                                                               
+                                                                                                                       
+      if (Array.isArray(records)) {                                                                                    
+        pageList = records;                                                                                            
+      } else if (records && typeof records === 'object') {                                                             
+        for (const [k, v] of Object.entries(records)) {                                                                
+          if (Array.isArray(v)) {                                                                                      
+            pageList.push(...v);                                                                                       
+          } else if (v && typeof v === 'object' && (v.Date || v.Status || v.status)) {                                 
+            pageList.push(v);                                                                                          
+          }                                                                                                            
+        }                                                                                                              
+                                                                                                                       
+      if (pageList.length === 0) {                                                                                     
+        break;                                                                                                         
+      }                                                                                                                
+                                                                                                                       
+      allReports.push(...pageList);                                                                                    
+                                                                                                                       
+      if (pageList.length < pageSize) {                                                                                
+        break;                                                                                                         
+      }                                                                                                                
+                                                                                                                       
+      startIndex += pageSize;                                                                                          
+    }                                                                                                                  
+                                                                                                                       
+    if (allReports.length === 0) {                                                                                     
+      return null;                                                                                                     
+    }                                                                                                                  
+                                                                                                                       
+    // Normalize daily attendance records                                                                              
+    let totalWorkingDays = 0;                                                                                          
+    let presentDays = 0;                                                                                               
+    let absentDays = 0;                                                                                                
+    let lateDays = 0;                                                                                                  
+    const recentPunches = [];                                                                                          
+                                                                                                                       
+    for (const r of allReports) {                                                                                      
+      if (!r || typeof r !== 'object') continue;                                                                       
+                                                                                                                       
+      const date = r.Date || r.date || r.attendanceDate || null;                                                       
+      const statusRaw = String(r.Status || r.status || '').trim();                                                     
+      const statusUpper = statusRaw.toUpperCase();                                                                     
+      const firstIn = r.FirstIn || r.firstIn || r.CheckIn || r.checkIn || null;                                        
+      const lastOut = r.LastOut || r.lastOut || r.CheckOut || r.checkOut || null;                                      
+      const totalHours = r.TotalHours || r.totalHours || r.HoursWorked || null;                                        
+      const isLate = Boolean(                                                                                          
+        r.Late || r.late || r.isLate ||                                                                                
+        (r.Late_Minutes && Number(r.Late_Minutes) > 0) ||                                                              
+        statusUpper.includes('LATE')                                                                                   
+      );                                                                                                               
+                                                                                                                       
+      const isWeekend = statusUpper.includes('WEEKEND') || statusUpper.includes('OFF');                                
+      const isHoliday = statusUpper.includes('HOLIDAY');                                                               
+                                                                                                                       
+      if (!isWeekend && !isHoliday && statusRaw.length > 0) {                                                          
+        totalWorkingDays += 1;                                                                                         
+        if (statusUpper.includes('PRESENT') || statusUpper === 'P') {                                                  
+          presentDays += 1;                                                                                            
+        } else if (statusUpper.includes('HALF')) {                                                                     
+          presentDays += 0.5;                                                                                          
+        } else if (statusUpper.includes('ABSENT') || statusUpper === 'A') {                                            
+          absentDays += 1;                                                                                             
+        }                                                                                                              
+      }                                                                                                                
+                                                                                                                       
+      if (isLate) {                                                                                                    
+        lateDays += 1;                                                                                                 
+      }                                                                                                                
+                                                                                                                       
+      if (date) {                                                                                                      
+        recentPunches.push({                                                                                           
+          date,                                                                                                        
+          status: statusRaw || 'Unknown',                                                                              
+          firstIn,                                                                                                     
+          lastOut,                                                                                                     
+          totalHours,                                                                                                  
+          isLate                                                                                                       
+        });                                                                                                            
+      }                                                                                                                
+    }                                                                                                                  
+                                                                                                                       
+    const attendancePercentage = totalWorkingDays > 0                                                                  
+      ? Math.round((presentDays / totalWorkingDays) * 100)                                                             
+      : null;                                                                                                          
+                                                                                                                       
+    return {                                                                                                           
+      summaryPeriod: `${sdate} to ${edate}`,                                                                           
+      sdate,                                                                                                           
+      edate,                                                                                                           
+      totalWorkingDays: totalWorkingDays > 0 ? totalWorkingDays : null,                                                
+      presentDays: totalWorkingDays > 0 ? presentDays : null,                                                          
+      absentDays: totalWorkingDays > 0 ? absentDays : null,                                                            
+      lateDays,                                                                                                        
+      attendancePercentage,                                                                                            
+      recentPunches: recentPunches.slice(-30),                                                                         
+      recordsCount: allReports.length,                                                                                 
+      raw: allReports                                                                                                  
+    };                                                                                                                 
+                                                                                                                       
+  /**                                                                                                                  
+   * Fetches real-time leave balances and utilization from Zoho People Leave API                                       
+   */                                                                                                                  
+  async fetchLeaveDetails(zohoEmpId, rawRecord, context = null) {                                                      
+    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;                                     
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+                                                                                                                       
+    const empId = rawRecord?.EmployeeID || rawRecord?.EMPLOYEEID || rawRecord?.EmpId || String(zohoEmpId);             
+    const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(empId)}`;                                 
+    const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });                                     
+    const records = leaveRes?.response?.result || leaveRes?.result || leaveRes;                                        
+                                                                                                                       
+    const list = Array.isArray(records) ? records : (records && typeof records === 'object' ? Object.values(records)...
+                                                                                                                       
+    const balance = [];                                                                                                
+    let takenThisYear = 0;                                                                                             
+    let hasTakenField = false;                                                                                         
+                                                                                                                       
+    for (const item of list) {                                                                                         
+      if (!item || typeof item !== 'object') continue;                                                                 
+      const type = item.Leave_Type || item.LeaveType || item.name || item.type || 'Leave';                             
+      const count = Number(item.Balance_Count ?? item.balance ?? item.count ?? 0);                                     
+      const taken = Number(item.Taken_Count ?? item.taken ?? 0);                                                       
+      const entitled = Number(item.Permitted_Count ?? item.entitled ?? item.annual_quota ?? (count + taken));          
+                                                                                                                       
+      if (item.Taken_Count !== undefined || item.taken !== undefined) {                                                
+        takenThisYear += taken;                                                                                        
+        hasTakenField = true;                                                                                          
+      }                                                                                                                
+                                                                                                                       
+      balance.push({                                                                                                   
+        type,                                                                                                          
+        balance: count,                                                                                                
+        taken,                                                                                                         
+        entitled: entitled > 0 ? entitled : null                                                                       
+      });                                                                                                              
+    }                                                                                                                  
+                                                                                                                       
+    return {                                                                                                           
+      balance,                                                                                                         
+      takenThisYear: hasTakenField ? takenThisYear : null,                                                             
+      pendingApprovals: null,                                                                                          
+      raw: records                                                                                                     
+    };                                                                                                                 
+                                                                                                                       
+  /**                                                                                                                  
+   * Fetches appraisal / performance rating from Zoho People if enabled                                                
+   */                                                                                                                  
+  async fetchPerformanceRating(zohoEmpId, rawRecord, context = null) {                                                 
+    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;                                     
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+    const empId = rawRecord?.EmployeeID || rawRecord?.EMPLOYEEID || rawRecord?.EmpId || String(zohoEmpId);             
+                                                                                                                       
+    const url = `${endpoints.performanceSummary}?empId=${encodeURIComponent(empId)}`;                                  
+    const res = await this.client.request(url, { context, dataCenter });                                               
+    const data = res?.response?.result || res?.result || res;                                                          
+                                                                                                                       
+    if (!data) return null;                                                                                            
+                                                                                                                       
+    let overallRating = null;                                                                                          
+    let reviewPeriod = null;                                                                                           
+    const historicalRatings = [];                                                                                      
+                                                                                                                       
+    if (typeof data === 'object') {                                                                                    
+      overallRating = data.overallRating ?? data.rating ?? data.Overall_Rating ?? null;                                
+      reviewPeriod = data.period ?? data.reviewPeriod ?? data.Appraisal_Period ?? null;                                
+      if (Array.isArray(data.history)) {                                                                               
+        historicalRatings.push(...data.history);                                                                       
+      }                                                                                                                
+    }                                                                                                                  
+                                                                                                                       
+    return {                                                                                                           
+      overallRating: overallRating !== null ? Number(overallRating) : null,                                            
+      currentReviewPeriod: reviewPeriod,                                                                               
+      historicalRatings,                                                                                               
+      raw: data                                                                                                        
+    };                                                                                                                 
+                                                                                                                       
+  /**                                                                                                                  
+   * Fetches training details using ZohoPeople.training.ALL authorization if available                                 
+   */                                                                                                                  
+  async fetchTrainingDetails(zohoEmpId, rawRecord, context = null) {                                                   
+    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;                                     
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+    const empId = rawRecord?.EmployeeID || rawRecord?.EMPLOYEEID || rawRecord?.EmpId || String(zohoEmpId);             
+                                                                                                                       
+    const url = `${endpoints.trainingDetails}?empId=${encodeURIComponent(empId)}`;                                     
+    const res = await this.client.request(url, { context, dataCenter });                                               
+    const records = res?.response?.result || res?.result || res;                                                       
+    return Array.isArray(records) ? records : [];                                                                      
+  }                                                                                                                    
+                                                                                                                       
+  /**                                                                                                                  
+   */                                                                                                                  
+    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;                                     
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);                                                  
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+      }                                                                                                                
+    }                                                                                                                  
+  }                                                                                                                    
+    }                                                                                                                  
+  }                                                                                                                    
+  }                                                                                                                    
+                                                                                                                       
+      // If record found, also attempt real-time attendance and leave                                                  
+                                                                                                                       
+  rawRecord.EmployeeID ||                                                                                              
+  rawRecord.EMPLOYEEID ||                                                                                              
+  rawRecord.EmpId ||                                                                                                   
+  employeeId;                                                                                                          
+        // Fetch real-time attendance                                                                                  
+          const attUrl = `${endpoints.attendanceSummary}?empId=${encodeURIComponent(zohoEmpId)}`;                      
+          const attRes = await this.client.request(attUrl, { context, dataCenter });                                   
+          attendanceData = attRes?.response?.result || attRes?.result || attRes;                                       
+          Logger.info('Attendance real-time lookup skipped', { error: attErr.message });                               
+          const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(zohoEmpId)}`;                       
+          const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });                               
+          leaveData = leaveRes?.response?.result || leaveRes?.result || leaveRes;                                      
+          Logger.info('Leave real-time lookup skipped', { error: leaveErr.message });                                  
+if (!rawRecord) {                                                                                                      
+  return {                                                                                                             
+    source: 'zoho_people',                                                                                             
+    employeeId,                                                                                                        
+    available: false,                                                                                                  
+    error: 'NOT_FOUND',                                                                                                
+    message: `Employee "${employeeId}" not found in Zoho People. Please ensure the employee exists in your Zoho Peop...
+  };                                                                                                                   
+      leave: leaveData                                                                                                 
+                                                                                                                       
+}                                                                                                                      
+
+
+
+
+============================================================
+FILE: intelligence\employee360Builder.js
+============================================================
+REAL HASH:   066DCBCF104971B0441647F1CC24D19BCEBDFB1AEB87C8BD6CE29A7D2F67BB45
+GEMINI HASH: 775788B18314DB8A2C0718D4E584BFEC5DF9B8D2DD685EFC6B858859435E9E71
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+    canonical.capabilities = rawZohoData.capabilities || {                                                             
+      employee: 'VERIFIED',                                                                                            
+      attendance: rawZohoData.attendance?.recordsCount > 0 ? 'VERIFIED' : 'PARTIAL',                                   
+      leave: rawZohoData.leave?.balance?.length > 0 ? 'VERIFIED' : 'PARTIAL',                                          
+      performance: rawZohoData.performance?.overallRating !== null ? 'VERIFIED' : 'BLOCKED_BY_SOURCE_CAPABILITY',      
+      goals: 'BLOCKED_BY_SOURCE_CAPABILITY',                                                                           
+      skills: 'PARTIAL',                                                                                               
+      learning: 'BLOCKED_BY_SOURCE_CAPABILITY',                                                                        
+      organisation: 'VERIFIED',                                                                                        
+      career: 'PARTIAL',                                                                                               
+      lifecycle: 'PARTIAL',                                                                                            
+      timeline: 'VERIFIED',                                                                                            
+      evidence: 'VERIFIED'                                                                                             
+    };                                                                                                                 
+                                                                                                                       
+    // Resolve employee profile avatar with reliable fallback                                                          
+    const rawPhoto = p.Photo_downloadUrl || p.PhotoUrl || p.photo_URL || p.Photo || p['Photo'] || p.photo || p.image...
+    let resolvedAvatar = null;                                                                                         
+    if (typeof rawPhoto === 'string' && rawPhoto.trim()) {                                                             
+      const cleanPhoto = rawPhoto.trim();                                                                              
+      if (cleanPhoto.startsWith('http://') || cleanPhoto.startsWith('https://')) {                                     
+        resolvedAvatar = cleanPhoto;                                                                                   
+      } else if (cleanPhoto.startsWith('/')) {                                                                         
+        resolvedAvatar = `https://people.zoho.in${cleanPhoto}`;                                                        
+    if (!resolvedAvatar) {                                                                                             
+      resolvedAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(canonical.employee.fullName || employe...
+    canonical.employee.avatarUrl = resolvedAvatar;                                                                     
+    canonical.employment.confirmationDate = p.Confirmationdate || p['Confirmation Date'] || p.confirmationDate || null;
+    canonical.employment.workShift = p.Shift || p['Shift'] || null;                                                    
+    canonical.employment.probationStatus = p.Probationstatus || p['Probation Status'] || null;                         
+    canonical.employment.employmentStatus = p.EMPLOYEESTATUS || p['Employee Status'] || p.employmentStatus || null;    
+    canonical.organisation.division = p.Division || p['Division'] || null;                                             
+    canonical.organisation.reportingManagerId = p.Reporting_To_Id || p.Reporting_To_EmpId ||                           
+      (typeof p.Reporting_To === 'object' ? (p.Reporting_To.recordId || p.Reporting_To.empId) : null) || null;         
+    canonical.organisation.reportingManagerEmail = p.Reporting_To_Email || null;                                       
+    canonical.organisation.secondaryManagerName = p.Secondary_Reporting_To || null;                                    
+      canonical.attendance.summaryPeriod = att.summaryPeriod || null;                                                  
+      canonical.attendance.totalWorkingDays = att.totalWorkingDays !== undefined ? att.totalWorkingDays : null;        
+      canonical.attendance.presentDays = att.presentDays !== undefined ? att.presentDays : null;                       
+      canonical.attendance.absentDays = att.absentDays !== undefined ? att.absentDays : null;                          
+      canonical.attendance.lateDays = att.lateDays !== undefined ? att.lateDays : null;                                
+      canonical.attendance.attendancePercentage = att.attendancePercentage !== undefined ? att.attendancePercentage ...
+      canonical.attendance.recentPunches = Array.isArray(att.recentPunches) ? att.recentPunches : [];                  
+    }                                                                                                                  
+      canonical.leave.balance = Array.isArray(lv.balance) ? lv.balance : [];                                           
+      canonical.leave.takenThisYear = lv.takenThisYear !== undefined ? lv.takenThisYear : null;                        
+      canonical.leave.pendingApprovals = lv.pendingApprovals !== undefined ? lv.pendingApprovals : null;               
+      canonical.leave.recentRequests = Array.isArray(lv.recentRequests) ? lv.recentRequests : [];                      
+    }                                                                                                                  
+    // Performance data mapping                                                                                        
+    if (rawZohoData.performance) {                                                                                     
+      const perf = rawZohoData.performance;                                                                            
+      canonical.performance.overallRating = perf.overallRating !== undefined ? perf.overallRating : null;              
+      canonical.performance.currentReviewPeriod = perf.currentReviewPeriod || null;                                    
+      canonical.performance.historicalRatings = Array.isArray(perf.historicalRatings) ? perf.historicalRatings : [];   
+      canonical.performance.reviewStatus = perf.reviewStatus || null;                                                  
+    }                                                                                                                  
+    if (p.Strengths) {                                                                                                 
+      canonical.performance.strengths = String(p.Strengths).split(',').map(s => s.trim()).filter(Boolean);             
+    }                                                                                                                  
+    if (p.Development_Areas) {                                                                                         
+      canonical.performance.developmentAreas = String(p.Development_Areas).split(',').map(d => d.trim()).filter(Bool...
+    }                                                                                                                  
+    // Skills data mapping from verified employee record fields                                                        
+    const rawSkills = p.Skill_set || p.Skills || p.skills;                                                             
+    if (rawSkills) {                                                                                                   
+      const skillList = String(rawSkills).split(',').map(s => s.trim()).filter(Boolean);                               
+      canonical.skills.technical = skillList.map(skill => ({                                                           
+        skill,                                                                                                         
+        proficiency: null,                                                                                             
+        source: 'Zoho People Employee Record'                                                                          
+      }));                                                                                                             
+    }                                                                                                                  
+    const rawCompetencies = p.Competencies || p.competencies;                                                          
+    if (rawCompetencies) {                                                                                             
+      const compList = String(rawCompetencies).split(',').map(c => c.trim()).filter(Boolean);                          
+      canonical.skills.competencies = compList.map(comp => ({                                                          
+        competency: comp,                                                                                              
+        level: null,                                                                                                   
+        source: 'Zoho People Employee Record'                                                                          
+      }));                                                                                                             
+    }                                                                                                                  
+    // Learning / training data mapping                                                                                
+    if (rawZohoData.training && Array.isArray(rawZohoData.training)) {                                                 
+      canonical.learning.enrolledCourses = rawZohoData.training.map(t => ({                                            
+        name: t.Course_Name || t.name || 'Course',                                                                     
+        status: t.Status || t.status || 'Enrolled',                                                                    
+        completionDate: t.Completed_On || null                                                                         
+      }));                                                                                                             
+    }                                                                                                                  
+    // Career history mapping                                                                                          
+    if (Array.isArray(p.Designation_History)) {                                                                        
+      canonical.career.promotions = p.Designation_History.map(h => ({                                                  
+        designation: h.Designation || h.designation || 'Previous Role',                                                
+        effectiveDate: h.Effective_Date || h.date || null,                                                             
+        notes: h.Notes || null                                                                                         
+      }));                                                                                                             
+    }                                                                                                                  
+    if (Array.isArray(p.Department_History)) {                                                                         
+      canonical.career.roleChanges = p.Department_History.map(dh => ({                                                 
+        department: dh.Department || dh.department || 'Previous Department',                                           
+        effectiveDate: dh.Effective_Date || dh.date || null                                                            
+      }));                                                                                                             
+    }                                                                                                                  
+    canonical.career.aspirations = p.Career_Aspirations || p.Aspirations || null;                                      
+    // Lifecycle: Map genuine facts, eliminating unsupported assumptions                                               
+    canonical.lifecycle.onboardingCompleted = canonical.employment.confirmationDate ? true : null;                     
+    canonical.lifecycle.currentStage = canonical.employment.employmentStatus || (canonical.employment.dateOfJoining ...
+    canonical.lifecycle.exitDate = p.Dateofexit || p['Date of exit'] || p.Exit_Date || p.Resignation_Date || null;     
+    canonical.lifecycle.exitInitiated = canonical.lifecycle.exitDate ? true : (canonical.lifecycle.currentStage === ...
+    // Record source capability classifications in limitations                                                         
+    const limitationList = [];                                                                                         
+    if (canonical.capabilities.goals === 'BLOCKED_BY_SOURCE_CAPABILITY') {                                             
+      limitationList.push('Goals/OKRs module is not currently exposed via standard Zoho People API for this tenant (...
+    }                                                                                                                  
+    if (canonical.capabilities.learning === 'BLOCKED_BY_SOURCE_CAPABILITY') {                                          
+      limitationList.push('Learning/LMS courses are not exposed via standard Zoho People API for this tenant (classi...
+    }                                                                                                                  
+    if (canonical.capabilities.performance === 'BLOCKED_BY_SOURCE_CAPABILITY') {                                       
+      limitationList.push('Performance/Appraisal ratings are not exposed or enabled in this Zoho People tenant (clas...
+    }                                                                                                                  
+    canonical.limitations = limitationList;                                                                            
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+                                                                                                                       
+    canonical.employee.avatarUrl = p.Photo || p['Photo'] || p.avatarUrl || null;                                       
+    canonical.employment.employmentStatus = p.EMPLOYEESTATUS || p['Employee Status'] || p.employmentStatus || 'Active';
+      canonical.attendance.totalWorkingDays = Number(att.total_days || att['Total Days'] || 0);                        
+      canonical.attendance.presentDays = Number(att.present_days || att['Present Days'] || 0);                         
+      canonical.attendance.absentDays = Number(att.absent_days || att['Absent Days'] || 0);                            
+      canonical.attendance.lateDays = Number(att.late_days || att['Late Days'] || 0);                                  
+      if (canonical.attendance.totalWorkingDays > 0) {                                                                 
+        canonical.attendance.attendancePercentage = Math.round((canonical.attendance.presentDays / canonical.attenda...
+      if (Array.isArray(lv)) {                                                                                         
+        canonical.leave.balance = lv.map(item => ({                                                                    
+          type: item.Leave_Type || item.name || 'Leave',                                                               
+          balance: Number(item.Balance_Count || item.balance || 0),                                                    
+          taken: Number(item.Taken_Count || item.taken || 0)                                                           
+        }));                                                                                                           
+      }                                                                                                                
+
+
+
+
+============================================================
+FILE: intelligence\metricsService.js
+============================================================
+REAL HASH:   B04C6139B1FC9D606BE38E7A08A6CBFADCAA45446204EEB0DCFC881F96BD1234
+GEMINI HASH: A75C0784FFF41429BEEF1DE01F04B2A2D139E9B4C8C8976E5BEAB35FDF65125E
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+    // 2. Current Role Tenure                                                                                          
+    const currentRoleStart = canonical.career?.promotions?.[0]?.effectiveDate ||                                       
+      canonical.career?.roleChanges?.[0]?.effectiveDate ||                                                             
+      emp.dateOfJoining;                                                                                               
+    if (currentRoleStart) {                                                                                            
+      metrics.currentRoleTenure = {                                                                                    
+        ...DateUtils.calculateTenure(currentRoleStart),                                                                
+      metrics.currentRoleTenure = {                                                                                    
+    // 3. Attendance rate                                                                                              
+    if (att.totalWorkingDays && att.totalWorkingDays > 0 && att.presentDays !== null && att.presentDays !== undefine...
+    // 4. Leave Utilization                                                                                            
+    const totalTaken = leave.takenThisYear;                                                                            
+    if (totalEntitled > 0 && totalTaken !== null && totalTaken !== undefined) {                                        
+        classification: DATA_CLASSIFICATION.CALCULATION                                                                
+        value: null,                                                                                                   
+    // 5. Performance Rating                                                                                           
+        formatted: String(perf.overallRating),                                                                         
+      };                                                                                                               
+    } else {                                                                                                           
+        value: null,                                                                                                   
+        formatted: 'Unknown',                                                                                          
+        classification: DATA_CLASSIFICATION.UNKNOWN                                                                    
+      };                                                                                                               
+    }                                                                                                                  
+    // 6. Skill Gap: Only compute when both employee level and role requirements exist                                 
+    metrics.skillGapPercentage = {                                                                                     
+      value: null,                                                                                                     
+      formatted: 'Unknown',                                                                                            
+      classification: DATA_CLASSIFICATION.UNKNOWN,                                                                     
+      note: 'Skill requirements for current role not defined in source system'                                         
+    };                                                                                                                 
+                                                                                                                       
+    // 7. Training Completion Rate                                                                                     
+    const enrolledCourses = Array.isArray(canonical.learning?.enrolledCourses) ? canonical.learning.enrolledCourses ...
+    if (enrolledCourses.length > 0) {                                                                                  
+      const completed = enrolledCourses.filter(c => String(c.status).toLowerCase() === 'completed').length;            
+      const rate = Math.round((completed / enrolledCourses.length) * 100);                                             
+      metrics.trainingCompletion = {                                                                                   
+        value: rate,                                                                                                   
+        formatted: `${rate}%`,                                                                                         
+        classification: DATA_CLASSIFICATION.CALCULATION                                                                
+      };                                                                                                               
+    } else {                                                                                                           
+      metrics.trainingCompletion = {                                                                                   
+        value: null,                                                                                                   
+        formatted: 'Unknown',                                                                                          
+        classification: DATA_CLASSIFICATION.UNKNOWN                                                                    
+      };                                                                                                               
+    }                                                                                                                  
+                                                                                                                       
+    // 8. Organisation Relationships                                                                                   
+    const org = canonical.organisation || {};                                                                          
+    if (org.reportingManagerName || org.department) {                                                                  
+      metrics.organisationRelationships = {                                                                            
+        value: {                                                                                                       
+          manager: org.reportingManagerName || 'Unknown',                                                              
+          department: org.department || 'Unknown',                                                                     
+          division: org.division || null                                                                               
+        },                                                                                                             
+        formatted: `${org.reportingManagerName ? `Reports to ${org.reportingManagerName}` : 'Manager unassigned'}, D...
+        classification: DATA_CLASSIFICATION.FACT                                                                       
+      };                                                                                                               
+    } else {                                                                                                           
+      metrics.organisationRelationships = {                                                                            
+        value: null,                                                                                                   
+        formatted: 'Unknown',                                                                                          
+        classification: DATA_CLASSIFICATION.UNKNOWN                                                                    
+      };                                                                                                               
+    }                                                                                                                  
+                                                                                                                       
+                                                                                                                       
+    // 2. Attendance rate                                                                                              
+    if (att.totalWorkingDays && att.totalWorkingDays > 0) {                                                            
+    // 3. Leave Utilization                                                                                            
+    const totalTaken = leave.takenThisYear || 0;                                                                       
+    if (totalEntitled > 0) {                                                                                           
+    // 4. Performance Rating                                                                                           
+
+
+
+
+============================================================
+FILE: intelligence\evidenceService.js
+============================================================
+REAL HASH:   2FCF67BA499CD261C5001EDBBEFE807172153A7EE9CF1D957CCE89F7469C5BCB
+GEMINI HASH: 35B1187A53EDB6D7696825401BB1F81C923BACB70B7EE6AFD27F0058B4DA2740
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+    if (canonical.performance?.overallRating !== null && canonical.performance?.overallRating !== undefined) {         
+    // Attendance evidence from real-time Zoho People attendance report                                                
+    if (canonical.attendance?.totalWorkingDays !== null && canonical.attendance?.totalWorkingDays !== undefined) {     
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'attendance',                                                                                          
+        field: 'totalWorkingDays',                                                                                     
+        source: 'Zoho People Attendance (getUserReport)',                                                              
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: `Recorded working days for period ${canonical.attendance.summaryPeriod || 'recent period'}.`            
+      }).toJSON());                                                                                                    
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.attendance.totalWorkingDays;                                                                         
+    }                                                                                                                  
+                                                                                                                       
+    if (canonical.deterministicMetrics?.attendancePercentage?.value !== null && canonical.deterministicMetrics?.atte...
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'attendance',                                                                                          
+        field: 'attendancePercentage',                                                                                 
+        source: 'Calculated from Zoho People Attendance Report',                                                       
+        classification: DATA_CLASSIFICATION.CALCULATION,                                                               
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: `Calculated from ${canonical.attendance.presentDays} present days out of ${canonical.attendance.total...
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.deterministicMetrics.attendancePercentage.formatted;                                                 
+    }                                                                                                                  
+                                                                                                                       
+    // Leave evidence from real-time Zoho People leave details                                                         
+    if (Array.isArray(canonical.leave?.balance) && canonical.leave.balance.length > 0) {                               
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'leave',                                                                                               
+        field: 'leaveBalances',                                                                                        
+        source: 'Zoho People Leave API (getLeaveTypeDetails)',                                                         
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Leave type balances directly obtained from Zoho People leave engine.'                                  
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.leave.balance.map(b => `${b.type}: ${b.balance}`).join(', ');                                        
+    }                                                                                                                  
+                                                                                                                       
+    if (canonical.deterministicMetrics?.leaveUtilization?.value !== null && canonical.deterministicMetrics?.leaveUti...
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'leave',                                                                                               
+        field: 'leaveUtilization',                                                                                     
+        source: 'Calculated from Zoho People Leave Entitlements and Usage',                                            
+        classification: DATA_CLASSIFICATION.CALCULATION,                                                               
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: `Calculated from ${canonical.leave.takenThisYear} days taken against verified leave entitlements.`      
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.deterministicMetrics.leaveUtilization.formatted;                                                     
+    }                                                                                                                  
+                                                                                                                       
+    // Organisation evidence                                                                                           
+    if (canonical.organisation?.department) {                                                                          
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'organisation',                                                                                        
+        field: 'department',                                                                                           
+        source: 'Zoho People (Employee Form)',                                                                         
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Department assignment directly obtained from Zoho People employee record.'                             
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.organisation.department;                                                                             
+    }                                                                                                                  
+                                                                                                                       
+    if (canonical.organisation?.reportingManagerName) {                                                                
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'organisation',                                                                                        
+        field: 'reportingManagerName',                                                                                 
+        source: 'Zoho People (Reporting To)',                                                                          
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Reporting manager relationship directly obtained from Zoho People.'                                    
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.organisation.reportingManagerName;                                                                   
+    }                                                                                                                  
+                                                                                                                       
+    // Lifecycle evidence                                                                                              
+    if (canonical.lifecycle?.currentStage) {                                                                           
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'lifecycle',                                                                                           
+        field: 'currentStage',                                                                                         
+        source: 'Zoho People (Employee Status)',                                                                       
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Current employee lifecycle stage directly obtained from Zoho People status.'                           
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.lifecycle.currentStage;                                                                              
+    }                                                                                                                  
+                                                                                                                       
+    if (canonical.lifecycle?.exitDate) {                                                                               
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'lifecycle',                                                                                           
+        field: 'exitDate',                                                                                             
+        source: 'Zoho People (Exit Details)',                                                                          
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Exit date recorded in Zoho People.'                                                                    
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.lifecycle.exitDate;                                                                                  
+    }                                                                                                                  
+                                                                                                                       
+    // Skills evidence (if present in source)                                                                          
+    if (Array.isArray(canonical.skills?.technical) && canonical.skills.technical.length > 0) {                         
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'skills',                                                                                              
+        field: 'technical',                                                                                            
+        source: 'Zoho People (Employee Skills)',                                                                       
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'medium',                                                                                          
+        notes: 'Declared skills directly obtained from Zoho People employee record.'                                   
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.skills.technical.map(s => s.skill).join(', ');                                                       
+    }                                                                                                                  
+                                                                                                                       
+    // Learning evidence (if present in source)                                                                        
+    if (Array.isArray(canonical.learning?.enrolledCourses) && canonical.learning.enrolledCourses.length > 0) {         
+      evidenceList.push(new EvidenceItem({                                                                             
+        domain: 'learning',                                                                                            
+        field: 'enrolledCourses',                                                                                      
+        source: 'Zoho People (Training Record)',                                                                       
+        classification: DATA_CLASSIFICATION.FACT,                                                                      
+        sourceRecordId: canonical.metadata.employeeId,                                                                 
+        confidence: 'high',                                                                                            
+        notes: 'Training enrollments directly obtained from Zoho People training data.'                                
+      }).toJSON());                                                                                                    
+                                                                                                                       
+      evidenceList[evidenceList.length - 1].value =                                                                    
+        canonical.learning.enrolledCourses.map(c => `${c.name} (${c.status})`).join(', ');                             
+    }                                                                                                                  
+                                                                                                                       
+                                                                                                                       
+    if (canonical.performance?.overallRating !== null) {                                                               
+
+
+
+
+============================================================
+FILE: intelligence\timelineService.js
+============================================================
+REAL HASH:   AE02CB984BF6E5B0E245EB0EEB33259175F6EE3E4DFF3206BFF063543A8EEAA9
+GEMINI HASH: E3F045E7DC784A1B58C6ADC8C4F16966E8729AC99DD8C8030A02D8E4E91D7227
+STATUS: DIFFERENT
+
+
+InputObject                                                                                 SideIndicator
+-----------                                                                                 -------------
+const DateUtils = require('../utils/dates');                                                =>           
+    const lifecycle = canonical.lifecycle || {};                                            =>           
+    if (emp.dateOfJoining && DateUtils.parse(emp.dateOfJoining)) {                          =>           
+    if (emp.confirmationDate && DateUtils.parse(emp.confirmationDate)) {                    =>           
+    if (lifecycle.exitDate && DateUtils.parse(lifecycle.exitDate)) {                        =>           
+      events.push({                                                                         =>           
+        id: 'evt-exit',                                                                     =>           
+        type: 'LIFECYCLE',                                                                  =>           
+        title: 'Separation / Exit Recorded',                                                =>           
+        date: lifecycle.exitDate,                                                           =>           
+        description: `Exit recorded under status ${lifecycle.currentStage || 'Separated'}`, =>           
+        domain: 'lifecycle'                                                                 =>           
+        if (promo.effectiveDate && DateUtils.parse(promo.effectiveDate)) {                  =>           
+          events.push({                                                                     =>           
+            id: `evt-promo-${idx}`,                                                         =>           
+            type: 'CAREER',                                                                 =>           
+            title: `Promoted to ${promo.designation || 'New Role'}`,                        =>           
+            date: promo.effectiveDate,                                                      =>           
+            description: promo.notes || 'Internal promotion',                               =>           
+            domain: 'career'                                                                =>           
+          });                                                                               =>           
+        }                                                                                   =>           
+      });                                                                                   =>           
+    }                                                                                       =>           
+                                                                                            =>           
+                                                                                            =>           
+    if (emp.dateOfJoining) {                                                                <=           
+    if (emp.confirmationDate) {                                                             <=           
+        events.push({                                                                       <=           
+          id: `evt-promo-${idx}`,                                                           <=           
+          type: 'CAREER',                                                                   <=           
+          title: `Promoted to ${promo.designation}`,                                        <=           
+          date: promo.effectiveDate,                                                        <=           
+          description: promo.notes || 'Internal promotion',                                 <=           
+          domain: 'career'                                                                  <=           
+        });                                                                                 <=           
+
+
+
+
+============================================================
+FILE: intelligence\trendService.js
+============================================================
+REAL HASH:   862FAFBEB7718D9AC330F09626C58A87C54398C88EE3ACD894B453DFFBD22A01
+GEMINI HASH: 128FF9ADB172F83AF4D57726D4D34DDD4C8EF0CFAF736AA0637ACCA37E591CF9
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+    if (att.lateDays !== null && att.lateDays !== undefined && att.lateDays > 3) {                                     
+    if (canonical.deterministicMetrics?.leaveUtilization?.value !== null &&                                            
+        canonical.deterministicMetrics?.leaveUtilization?.value !== undefined &&                                       
+        canonical.deterministicMetrics.leaveUtilization.value > 80) {                                                  
+      trends.push({                                                                                                    
+        domain: 'leave',                                                                                               
+        metric: 'leave_utilization',                                                                                   
+        trend: 'high_utilization',                                                                                     
+        delta: canonical.deterministicMetrics.leaveUtilization.value,                                                  
+        classification: DATA_CLASSIFICATION.TREND,                                                                     
+        evidence: `Leave utilization at ${canonical.deterministicMetrics.leaveUtilization.formatted} of verified ent...
+      });                                                                                                              
+    }                                                                                                                  
+                                                                                                                       
+    if (att.lateDays && att.lateDays > 3) {                                                                            
+
+
+
+
+============================================================
+FILE: ai\aiContextBuilder.js
+============================================================
+REAL HASH:   9FBC5731E7A878DFB8C779C6FD599D0373703F062D54ED8224264E166D481C61
+GEMINI HASH: 0D4214A32CB0777BBEBEA6DF601B4E72EDAAC8842CED8E73423D584357087C3B
+STATUS: DIFFERENT
+
+
+InputObject                                                                                                            
+-----------                                                                                                            
+        overallRating: canonical.performance?.overallRating !== null && canonical.performance?.overallRating !== und...
+          ? canonical.performance.overallRating                                                                        
+          : 'Unknown',                                                                                                 
+        summaryPeriod: canonical.attendance?.summaryPeriod || 'Unknown',                                               
+        totalWorkingDays: canonical.attendance?.totalWorkingDays ?? 'Unknown',                                         
+        presentDays: canonical.attendance?.presentDays ?? 'Unknown',                                                   
+        lateDays: canonical.attendance?.lateDays ?? 'Unknown'                                                          
+        utilization: canonical.deterministicMetrics?.leaveUtilization?.formatted || 'Unknown',                         
+        takenThisYear: canonical.leave?.takenThisYear ?? 'Unknown',                                                    
+        balances: Array.isArray(canonical.leave?.balance) ? canonical.leave.balance.map(b => `${b.type}: ${b.balance...
+      skills: {                                                                                                        
+        technical: Array.isArray(canonical.skills?.technical) ? canonical.skills.technical.map(s => s.skill) : [],     
+        competencies: Array.isArray(canonical.skills?.competencies) ? canonical.skills.competencies.map(c => c.compe...
+      },                                                                                                               
+      learning: {                                                                                                      
+        enrolledCourses: Array.isArray(canonical.learning?.enrolledCourses) ? canonical.learning.enrolledCourses.map...
+        trainingCompletionRate: canonical.deterministicMetrics?.trainingCompletion?.formatted || 'Unknown'             
+      },                                                                                                               
+      lifecycle: {                                                                                                     
+        currentStage: canonical.lifecycle?.currentStage || 'Unknown',                                                  
+        onboardingCompleted: canonical.lifecycle?.onboardingCompleted !== null && canonical.lifecycle?.onboardingCom...
+          ? (canonical.lifecycle.onboardingCompleted ? 'Yes' : 'No')                                                   
+          : 'Unknown',                                                                                                 
+        exitDate: canonical.lifecycle?.exitDate || 'None'                                                              
+      },                                                                                                               
+      capabilities: canonical.capabilities || {},                                                                      
+        overallRating: canonical.performance?.overallRating || 'Not evaluated',                                        
+        lateDays:                                                                                                      
+  canonical.deterministicMetrics?.attendancePercentage?.formatted !== 'Unknown'                                        
+    ? canonical.attendance?.lateDays                                                                                   
+    : 'Unknown'                                                                                                        
+        utilization: canonical.deterministicMetrics?.leaveUtilization?.formatted || 'Unknown'                          
+
+
+

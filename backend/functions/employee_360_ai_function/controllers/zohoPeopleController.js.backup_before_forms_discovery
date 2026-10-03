@@ -2,7 +2,6 @@
 
 const ZohoPeopleClient = require('../connectors/zohoPeople/zohoPeopleClient');
 const ZohoPeopleEmployeeService = require('../connectors/zohoPeople/zohoPeopleEmployeeService');
-const ZohoPeopleFormsService = require('../connectors/zohoPeople/zohoPeopleFormsService');
 const EmployeeRepository = require('../repositories/employeeRepository');
 const HttpUtils = require('../utils/http');
 const Logger = require('../utils/logger');
@@ -11,7 +10,6 @@ class ZohoPeopleController {
   constructor() {
     this.client = new ZohoPeopleClient();
     this.employeeService = new ZohoPeopleEmployeeService(this.client);
-    this.formsService = new ZohoPeopleFormsService(this.client);
     this.employeeRepository = new EmployeeRepository();
   }
 
@@ -20,58 +18,6 @@ class ZohoPeopleController {
     HttpUtils.sendSuccess(res, verification);
   }
 
-  async getForms(req, res, params, context) {
-    try {
-      const forms = await this.formsService.listForms(context);
-      HttpUtils.sendSuccess(res, {
-        forms,
-        source: 'live_zoho_people'
-      });
-    } catch (err) {
-      Logger.warn('Failed to retrieve Zoho People forms', {
-        error: err.message
-      });
-      HttpUtils.sendError(res, err);
-    }
-  }
-
-  async getFormComponents(req, res, params, context) {
-    try {
-      const components = await this.formsService.getFormComponents(params.formLinkName, context);
-      HttpUtils.sendSuccess(res, {
-        formLinkName: params.formLinkName,
-        components,
-        source: 'live_zoho_people'
-      });
-    } catch (err) {
-      Logger.warn('Failed to retrieve Zoho People form components', {
-        formLinkName: params.formLinkName,
-        error: err.message
-      });
-      HttpUtils.sendError(res, err);
-    }
-  }
-
-  async getFormRecords(req, res, params, context) {
-    try {
-      const records = await this.formsService.getFormRecords(
-        params.formLinkName,
-        context
-      );
-
-      HttpUtils.sendSuccess(res, {
-        formLinkName: params.formLinkName,
-        records,
-        source: 'live_zoho_people'
-      });
-    } catch (err) {
-      Logger.warn('Failed to retrieve Zoho People form records', {
-        formLinkName: params.formLinkName,
-        error: err.message
-      });
-      HttpUtils.sendError(res, err);
-    }
-  }
   async getEmployees(req, res, params, context) {
     try {
       const list = await this.employeeService.getLiveEmployeeDirectory(context);

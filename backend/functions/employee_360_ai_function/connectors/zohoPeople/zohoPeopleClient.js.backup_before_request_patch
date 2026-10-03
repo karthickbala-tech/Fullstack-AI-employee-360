@@ -14,9 +14,6 @@ class ZohoPeopleClient {
   getBaseUrl(dc = null) {
     return ZohoPeopleEnvironment.getBaseUrl(dc || this.tenantConfig.dataCenter);
   }
-  _sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
   /**
    * Resolves the access token using the officially configured Catalyst Connection:
@@ -94,196 +91,64 @@ class ZohoPeopleClient {
    * Dispatches request to Zoho People API with access token from Catalyst Connection
    */
   async request(path, options = {}) {
-  const dc = options.dataCenter || this.tenantConfig.dataCenter;
-  const baseUrl = this.getBaseUrl(dc);
+    const dc = options.dataCenter || this.tenantConfig.dataCenter;
+    const baseUrl = this.getBaseUrl(dc);
+    const url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+    const req = options.req || options.context?.req || null;
 
-  let url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+    const connectionCredentials = await this._resolveConnectionCredentials(req);
 
-  // Optional query parameters.
-  // Existing callers that construct query strings manually remain compatible.
-  if (options.params && typeof options.params === 'object') {
-    const searchParams = new URLSearchParams();
-
-    for (const [key, value] of Object.entries(options.params)) {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, String(value));
-      }
-    }
-
-    const queryString = searchParams.toString();
-
-    if (queryString) {
-      url += url.includes('?') ? `&${queryString}` : `?${queryString}`;
-    }
-  }
-
-  const req = options.req || options.context?.req || null;
-  const connectionCredentials = await this._resolveConnectionCredentials(req);
-
-  const headers = {
-    Accept: 'application/json',
-    ...(connectionCredentials.headers || {}),
-    ...(options.headers || {})
-  };
-
-  const method = options.method || 'GET';
-
-  let body;
-
-  if (options.formData && typeof options.formData === 'object') {
-    headers['Content-Type'] = 'application/x-www-form-urlencoded';
-
-    const formParams = new URLSearchParams();
-
-    for (const [key, value] of Object.entries(options.formData)) {
-      if (value !== undefined && value !== null) {
-        formParams.append(key, String(value));
-      }
-    }
-
-    body = formParams.toString();
-  } else if (options.body !== undefined && options.body !== null) {
-    if (typeof options.body === 'string') {
-      body = options.body;
-    } else {
-      headers['Content-Type'] = 'application/json';
-      body = JSON.stringify(options.body);
-    }
-  }
-
-  const maxRetries = Number.isInteger(options.maxRetries)
-    ? Math.max(0, Math.min(options.maxRetries, 2))
-    : 2;
-
-  let attempt = 0;
-
-  while (true) {
+const headers = {
+  'Accept': 'application/json',
+  ...(connectionCredentials.headers || {}),
+  ...(options.headers || {})
+};
     try {
       const response = await fetch(url, {
-        method,
+        method: options.method || 'GET',
         headers,
-        body
+        body: options.body ? JSON.stringify(options.body) : undefined
       });
 
       const rawText = await response.text();
-
       let data = null;
-
       try {
         data = JSON.parse(rawText);
-      } catch {
+      } catch (parseErr) {
         data = { rawText };
       }
 
-      // Check Zoho-specific error response format.
+      // Check Zoho-specific error response format
       if (data && data.response && data.response.errors) {
         const errObj = data.response.errors;
         const errCode = errObj.code;
         const errMsg = errObj.message || 'Zoho People API Error';
 
-        if (errCode === 7202 || errCode === 7203) {
-          const authErr = new ExternalServiceError(
-            `Zoho People Authentication Failed: ${errMsg}`
-          );
-
+        if (errCode === 7202 || errCode === 7203 || errCode === 7000) {
+          const authErr = new ExternalServiceError(`Zoho People Authentication Failed: ${errMsg}`);
           authErr.isAuthError = true;
           authErr.zohoCode = errCode;
-
           throw authErr;
         }
 
-        const apiErr = new ExternalServiceError(
-          `Zoho People Error (${errCode}): ${errMsg}`
-        );
-
+        const apiErr = new ExternalServiceError(`Zoho People Error (${errCode}): ${errMsg}`);
         apiErr.zohoCode = errCode;
-        apiErr.statusCode = response.status;
-
         throw apiErr;
       }
 
       if (!response.ok) {
-        const httpErr = new ExternalServiceError(
-          `Zoho People returned HTTP ${response.status}: ${rawText.slice(0, 200)}`
-        );
-
+        const httpErr = new ExternalServiceError(`Zoho People returned HTTP ${response.status}: ${rawText.slice(0, 200)}`);
         httpErr.statusCode = response.status;
-
-        const retryableStatus =
-          response.status === 429 ||
-          response.status === 502 ||
-          response.status === 503 ||
-          response.status === 504;
-
-        httpErr.retryable = retryableStatus;
-
-        if (response.status === 429) {
-          const retryAfter = response.headers.get('retry-after');
-
-          if (retryAfter) {
-            const retryAfterSeconds = Number(retryAfter);
-
-            if (Number.isFinite(retryAfterSeconds)) {
-              httpErr.retryAfterMs = Math.max(
-                0,
-                Math.min(retryAfterSeconds * 1000, 10000)
-              );
-            }
-          }
-        }
-
         throw httpErr;
       }
 
       return data;
     } catch (err) {
-      if (
-        err instanceof ConfigurationError ||
-        err instanceof ExternalServiceError
-      ) {
-        const canRetry =
-          Boolean(err.retryable) &&
-          attempt < maxRetries;
-
-        if (!canRetry) {
-          throw err;
-        }
-
-        const delayMs =
-          Number.isFinite(err.retryAfterMs)
-            ? err.retryAfterMs
-            : Math.min(500 * Math.pow(2, attempt), 4000);
-
-        Logger.warn(
-          'Retrying Zoho People request after transient failure',
-          {
-            url,
-            method,
-            attempt: attempt + 1,
-            maxRetries,
-            statusCode: err.statusCode || null,
-            delayMs
-          }
-        );
-
-        await this._sleep(delayMs);
-
-        attempt += 1;
-        continue;
-      }
-
-      Logger.error(
-        'Zoho People request failed unexpectedly',
-        err,
-        { url, method }
-      );
-
-      throw new ExternalServiceError(
-        `Zoho People request failed: ${err.message}`
-      );
+      if (err instanceof ExternalServiceError || err instanceof ConfigurationError) throw err;
+      Logger.error('Failed to communicate with Zoho People API', err, { url });
+      throw new ExternalServiceError(`Unable to reach Zoho People API: ${err.message}`);
     }
   }
-}
 
   /**
    * Tests connectivity to Zoho People using the Catalyst Connection

@@ -41,11 +41,6 @@ const routes = [
   },
   {
     method: 'GET',
-    pattern: /^\/v1\/zoho\/forms\/([^/]+)\/records\/?$/,
-    paramNames: ['formLinkName'],
-    handler: (req, res, params, ctx) => zohoPeopleController.getFormRecords(req, res, params, ctx)
-  },  {
-    method: 'GET',
     pattern: /^\/v1\/zoho\/employees\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => zohoPeopleController.getEmployees(req, res, params, ctx)

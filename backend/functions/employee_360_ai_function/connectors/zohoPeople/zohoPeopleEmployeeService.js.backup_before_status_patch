@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const ZohoPeopleClient = require('./zohoPeopleClient');
 const ZohoPeopleEnvironment = require('./zohoPeopleEnvironment');
@@ -277,11 +277,10 @@ if (!rawRecord) {
         department: r.Department || null,
         email: r.EmailID || null,
         workLocation: r.LocationName || r.Work_location || null,
-        status: r.Employeestatus || null
+        status: r.Employeestatus || 'Active'
       }));
   }
 }
 
 module.exports = ZohoPeopleEmployeeService;
-
 

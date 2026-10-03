@@ -16,7 +16,7 @@ class AIContextBuilder {
         status: canonical.employment?.employmentStatus || 'Unknown'
       },
       performance: {
-        overallRating: canonical.performance?.overallRating !== null && canonical.performance?.overallRating !== undefined ? canonical.performance.overallRating : 'Not evaluated',
+        overallRating: canonical.performance?.overallRating || 'Not evaluated',
         strengths: canonical.performance?.strengths || [],
         developmentAreas: canonical.performance?.developmentAreas || []
       },

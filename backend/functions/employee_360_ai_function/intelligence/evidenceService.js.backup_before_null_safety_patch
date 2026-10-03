@@ -51,7 +51,7 @@ class EvidenceService {
         canonical.deterministicMetrics.tenure.formatted;
     }
 
-    if (canonical.performance?.overallRating !== null && canonical.performance?.overallRating !== undefined) {
+    if (canonical.performance?.overallRating !== null) {
       evidenceList.push(new EvidenceItem({
         domain: 'performance',
         field: 'overallRating',

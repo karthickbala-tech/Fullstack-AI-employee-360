@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const url = require('url');
 const { NotFoundError, AppError } = require('../utils/errors');
@@ -28,23 +28,6 @@ const routes = [
     handler: (req, res, params, ctx) => zohoPeopleController.getStatus(req, res, params, ctx)
   },
   {
-    method: 'GET',
-    pattern: /^\/v1\/zoho\/forms\/?$/,
-    paramNames: [],
-    handler: (req, res, params, ctx) => zohoPeopleController.getForms(req, res, params, ctx)
-  },
-  {
-    method: 'GET',
-    pattern: /^\/v1\/zoho\/forms\/([^/]+)\/components\/?$/,
-    paramNames: ['formLinkName'],
-    handler: (req, res, params, ctx) => zohoPeopleController.getFormComponents(req, res, params, ctx)
-  },
-  {
-    method: 'GET',
-    pattern: /^\/v1\/zoho\/forms\/([^/]+)\/records\/?$/,
-    paramNames: ['formLinkName'],
-    handler: (req, res, params, ctx) => zohoPeopleController.getFormRecords(req, res, params, ctx)
-  },  {
     method: 'GET',
     pattern: /^\/v1\/zoho\/employees\/?$/,
     paramNames: [],
@@ -155,5 +138,4 @@ class Router {
 }
 
 module.exports = Router;
-
 

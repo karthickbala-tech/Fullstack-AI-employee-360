@@ -42,7 +42,7 @@ class Employee360Builder {
     canonical.employment.employeeType = p.Employeetype || p['Employee Type'] || p.employeeType || null;
     canonical.employment.dateOfJoining = p.Dateofjoining || p['Date of joining'] || p.dateOfJoining || null;
     canonical.employment.workLocation = p.LocationName || p['Location Name'] || p.workLocation || null;
-    canonical.employment.employmentStatus = p.EMPLOYEESTATUS || p['Employee Status'] || p.employmentStatus || null;
+    canonical.employment.employmentStatus = p.EMPLOYEESTATUS || p['Employee Status'] || p.employmentStatus || 'Active';
 
     canonical.organisation.department = p.Department || p['Department'] || p.department || null;
     canonical.organisation.reportingManagerName = p.Reporting_To || p['Reporting To'] || p.reportingManagerName || null;
@@ -88,4 +88,3 @@ class Employee360Builder {
 }
 
 module.exports = Employee360Builder;
-

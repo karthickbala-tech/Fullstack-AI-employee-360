@@ -1,13 +1,11 @@
 'use strict';
 
-const DateUtils = require('../utils/dates');
-
 class TimelineIntelligenceService {
   static buildEvents(canonical) {
     const events = [];
     const emp = canonical.employment || {};
 
-    if (DateUtils.parse(emp.dateOfJoining)) {
+    if (emp.dateOfJoining) {
       events.push({
         id: 'evt-doj',
         type: 'LIFECYCLE',
@@ -18,7 +16,7 @@ class TimelineIntelligenceService {
       });
     }
 
-    if (DateUtils.parse(emp.confirmationDate)) {
+    if (emp.confirmationDate) {
       events.push({
         id: 'evt-conf',
         type: 'MILESTONE',
@@ -31,8 +29,6 @@ class TimelineIntelligenceService {
 
     if (Array.isArray(canonical.career?.promotions)) {
       canonical.career.promotions.forEach((promo, idx) => {
-        if (!DateUtils.parse(promo?.effectiveDate)) return;
-
         events.push({
           id: `evt-promo-${idx}`,
           type: 'CAREER',
@@ -44,13 +40,9 @@ class TimelineIntelligenceService {
       });
     }
 
-    events.sort((a, b) => DateUtils.parse(b.date).getTime() - DateUtils.parse(a.date).getTime());
+    events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return events;
   }
 }
 
 module.exports = TimelineIntelligenceService;
-
-
-
-

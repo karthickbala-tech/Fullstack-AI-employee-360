@@ -220,68 +220,49 @@ if (!rawRecord) {
   async getLiveEmployeeDirectory(context = null) {
     const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;
     const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);
+    const res = await this.client.request(`${endpoints.employeeList}?limit=200`, { context, dataCenter });
+    const records = Array.isArray(res)
+  ? res
+  : (res?.response?.result || res?.result || []);
 
-    const pageSize = 200;
-    let startIndex = 0;
-    const flatList = [];
+const flatList = [];
 
-    while (true) {
-      const url = `${endpoints.employeeList}?startIndex=${startIndex}&limit=${pageSize}`;
 
-      const res = await this.client.request(url, { context, dataCenter });
+if (Array.isArray(records)) {
+  for (const item of records) {
+    if (!item || typeof item !== 'object') continue;
 
-      const records = Array.isArray(res)
-        ? res
-        : (res?.response?.result || res?.result || []);
-
-      const pageRecords = [];
-
-      if (Array.isArray(records)) {
-        for (const item of records) {
-          if (!item || typeof item !== 'object') continue;
-
-          for (const value of Object.values(item)) {
-            if (Array.isArray(value)) {
-              pageRecords.push(...value);
-            } else if (value && typeof value === 'object') {
-              pageRecords.push(value);
-            }
-          }
-        }
-      } else if (records && typeof records === 'object') {
-        for (const value of Object.values(records)) {
-          if (Array.isArray(value)) {
-            pageRecords.push(...value);
-          } else if (value && typeof value === 'object') {
-            pageRecords.push(value);
-          }
-        }
+    for (const value of Object.values(item)) {
+      if (Array.isArray(value)) {
+        flatList.push(...value);
+      } else if (value && typeof value === 'object') {
+        flatList.push(value);
       }
-
-      flatList.push(...pageRecords);
-
-      if (pageRecords.length < pageSize) {
-        break;
-      }
-
-      startIndex += pageSize;
     }
-
+  }
+} else if (records && typeof records === 'object') {
+  for (const value of Object.values(records)) {
+    if (Array.isArray(value)) {
+      flatList.push(...value);
+    } else if (value && typeof value === 'object') {
+      flatList.push(value);
+    }
+  }
+}
+    
     return flatList
-      .filter(r => r && typeof r === 'object')
-      .map(r => ({
-        recordId: r.Zoho_ID || r.recordId || r.pkId || null,
-        employeeId: r.EmployeeID || null,
-        fullName: `${r.FirstName || ''} ${r.LastName || ''}`.trim() || 'Unknown',
-        jobTitle: r.Designation || null,
-        department: r.Department || null,
-        email: r.EmailID || null,
-        workLocation: r.LocationName || r.Work_location || null,
-        status: r.Employeestatus || null
-      }));
+  .filter(r => r && typeof r === 'object')
+  .map(r => ({
+    recordId: r.Zoho_ID || r.recordId || r.pkId || null,
+    employeeId: r.EmployeeID || null,
+    fullName: `${r.FirstName || ''} ${r.LastName || ''}`.trim() || 'Unknown',
+    jobTitle: r.Designation || null,
+    department: r.Department || null,
+    email: r.EmailID || null,
+    workLocation: r.LocationName || r.Work_location || null,
+    status: r.Employeestatus || 'Active'
+  }));
   }
 }
 
 module.exports = ZohoPeopleEmployeeService;
-
-
