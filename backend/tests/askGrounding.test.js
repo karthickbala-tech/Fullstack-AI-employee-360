@@ -107,3 +107,34 @@ test('fabricated evidence still fails closed', async t => {
   assert.equal(result.type, 'Unknown');
   assert.doesNotMatch(result.answer, /salary is high/);
 });
+
+test('an Unknown answer with invented references is kept, with its references dropped', async t => {
+  const generator = generatorReturning(t, {
+    answer: 'Last month\'s attendance is not recorded.',
+    type: 'Unknown',
+    confidence: 'high',
+    evidence: ['attendance.percentage'],
+    limitations: []
+  });
+  const result = await generator.answerQuestion(buildCanonical(), 'What about last month attendance?');
+  assert.equal(result.answer, 'Last month\'s attendance is not recorded.');
+  assert.deepEqual(result.evidence, []);
+  assert.equal(result.confidence, 'unknown');
+});
+
+test('a claim about an unevaluated field falls back and names what is not recorded', async t => {
+  const generator = generatorReturning(t, {
+    answer: 'Your performance is **not evaluated**.',
+    type: 'Fact',
+    confidence: 'high',
+    evidence: ['performance.overallRating'],
+    limitations: []
+  });
+  const result = await generator.answerQuestion(buildCanonical(), 'Tell me about my performance');
+  assert.equal(result.type, 'Unknown');
+  assert.match(result.answer, /Not recorded in Zoho People: performance rating\./);
+});
+
+test('Ask prefers the fast model by default', () => {
+  assert.equal(new AskGenerator().provider.model, 'gemini-3.1-flash-lite');
+});
