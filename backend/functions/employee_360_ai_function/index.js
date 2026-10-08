@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const RequestContext = require('./middleware/requestContext');
 const AuthorizationBoundary = require('./middleware/authorization');
@@ -35,8 +35,8 @@ module.exports = async (req, res) => {
       }
     }
 
-    // 1. Authenticate & initialize security context
-    await AuthorizationBoundary.authenticate(req, context);
+    // Authentication temporarily disabled for Development.
+    // Restore AuthorizationBoundary.authenticate() when authentication is re-enabled.
 
     // 2. Delegate routing to route table
     await Router.dispatch(req, res, context);

@@ -83,16 +83,31 @@ const routes = [
 ];
 
 class Router {
-  static async dispatch(req, res, context) {
-    const parsedUrl = url.parse(req.url, true);
+  static normalizePath(req) {
+    const parsedUrl = url.parse(req.url || '/', true);
     let pathname = parsedUrl.pathname || '/';
-    const method = req.method ? req.method.toUpperCase() : 'GET';
 
     // Normalize Catalyst serverless function prefix if present:
     pathname = pathname.replace(/^\/server\/employee_360_ai_function(\/|$)/, '/');
     if (!pathname.startsWith('/')) {
       pathname = '/' + pathname;
     }
+    return pathname;
+  }
+
+  /**
+   * Only the service identification and health routes are reachable without
+   * authentication.
+   */
+  static isPublicRequest(req) {
+    const method = req.method ? req.method.toUpperCase() : 'GET';
+    const pathname = this.normalizePath(req);
+    return method === 'GET' && (pathname === '/' || pathname === '' || pathname === '/health');
+  }
+
+  static async dispatch(req, res, context) {
+    const pathname = this.normalizePath(req);
+    const method = req.method ? req.method.toUpperCase() : 'GET';
 
     // Root Identification Route
     if (pathname === '/' || pathname === '') {

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const GeminiProvider = require('./geminiProvider');
 const AIContextBuilder = require('./aiContextBuilder');
@@ -9,6 +9,26 @@ const Logger = require('../utils/logger');
 class InsightGenerator {
   constructor(provider = null) {
     this.provider = provider || new GeminiProvider();
+  }
+  static validateEvidenceReferences(responseEvidence, canonicalEvidence) {
+    if (!Array.isArray(responseEvidence) || !Array.isArray(canonicalEvidence)) {
+      return false;
+    }
+
+    const allowedReferences = new Set(
+      canonicalEvidence
+        .filter(item => item && item.domain && item.field)
+        .map(item => `${item.domain}.${item.field}`)
+    );
+
+    return responseEvidence.every(item => {
+      if (typeof item !== 'string') return false;
+
+      const reference = item.trim();
+      if (!reference) return false;
+
+      return allowedReferences.has(reference);
+    });
   }
 
   async generateInsights(canonical) {
@@ -26,7 +46,7 @@ class InsightGenerator {
         headline: 'Tenure Milestone',
         description: `Employee has completed ${canonical.deterministicMetrics.tenure.formatted} of service.`,
         confidence: CONFIDENCE_LEVELS.HIGH,
-        evidence: [canonical.employment.dateOfJoining]
+        evidence: ['employment.tenure']
       });
     }
 
@@ -48,8 +68,10 @@ class InsightGenerator {
       const contextStr = AIContextBuilder.buildPromptContext(canonical);
       const prompt = [
         AIGuardrails.getSystemPolicy(),
-        "TASK: Provide 2 structured employee insights based only on provided facts.",
-        "Output ONLY a JSON array with objects matching: [{\"domain\":\"performance\",\"headline\":\"...\",\"description\":\"...\"}]",
+        "TASK: Provide 2 structured employee insights based only on provided facts and evidence.",
+        "Each insight MUST include an evidence array containing only exact domain.field references from the supplied evidence array.",
+        "Never invent, infer, or create evidence references that are not present in the supplied evidence array.",
+        "Output ONLY a JSON array with objects matching: [{\"domain\":\"performance\",\"headline\":\"...\",\"description\":\"...\",\"evidence\":[\"domain.field\"]}]",
         "CONTEXT:",
         contextStr
       ].join('\n');
@@ -60,13 +82,24 @@ class InsightGenerator {
         const parsed = JSON.parse(clean);
         if (Array.isArray(parsed)) {
           parsed.forEach(item => {
+            if (
+              !InsightGenerator.validateEvidenceReferences(
+                item.evidence,
+                canonical.evidence
+              )
+            ) {
+              throw new Error(
+                'Gemini returned unsupported insight evidence references'
+              );
+            }
+
             deterministicInsights.push({
               domain: item.domain || 'general',
               type: DATA_CLASSIFICATION.AI_INSIGHT,
               headline: item.headline,
               description: item.description,
               confidence: CONFIDENCE_LEVELS.MEDIUM,
-              evidence: ['Synthesized from verified Employee 360 context']
+              evidence: item.evidence.map(reference => reference.trim())
             });
           });
         }
@@ -80,3 +113,4 @@ class InsightGenerator {
 }
 
 module.exports = InsightGenerator;
+

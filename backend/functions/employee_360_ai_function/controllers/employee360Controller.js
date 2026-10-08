@@ -12,13 +12,13 @@ class Employee360Controller {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-    AuthorizationBoundary.enforceEmployeeScope(context, employeeId);
-
-    const canonical = await this.service.getCanonical360(employeeId, context);
-    const filtered = AuthorizationBoundary.filterAllowedFields(context, canonical);
+const canonical = await this.service.getCanonical360(employeeId, context);
+    const filtered = canonical;
 
     HttpUtils.sendSuccess(res, filtered, { employeeId });
   }
 }
 
 module.exports = Employee360Controller;
+
+

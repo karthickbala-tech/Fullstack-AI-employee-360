@@ -11,6 +11,27 @@ class AskGenerator {
     this.provider = provider || new GeminiProvider();
   }
 
+  static validateEvidenceReferences(responseEvidence, canonicalEvidence) {
+    if (!Array.isArray(responseEvidence) || !Array.isArray(canonicalEvidence)) {
+      return false;
+    }
+
+    const allowedReferences = new Set(
+      canonicalEvidence
+        .filter(item => item && item.domain && item.field)
+        .map(item => `${item.domain}.${item.field}`)
+    );
+
+    return responseEvidence.every(item => {
+      if (typeof item !== 'string') return false;
+
+      const reference = item.trim();
+      if (!reference) return false;
+
+      return allowedReferences.has(reference);
+    });
+  }
+
   async answerQuestion(canonical, question) {
     const cleanQuestion = AIGuardrails.sanitizePrompt(question);
 
@@ -42,7 +63,7 @@ class AskGenerator {
       '  "answer": "string",',
       '  "type": "Fact | Calculation | Trend | Correlation | AI Insight | Unknown",',
       '  "confidence": "high | medium | low | unknown",',
-      '  "evidence": ["list of strings mentioning the source fields"],',
+      '  "evidence": ["list of domain.field evidence references from the supplied evidence only"],',
       '  "limitations": ["list of limitations"]',
       "}",
       "4. For the 'type' field, use ONLY these exact values and capitalization:",
@@ -53,7 +74,9 @@ class AskGenerator {
       "AI Insight",
       "Unknown",
       "5. Do not use lowercase or alternative values for the 'type' field.",
-      "6. Return JSON only. Do not wrap the JSON in markdown code fences."
+      "6. For the 'evidence' field, use ONLY exact domain.field references that exist in the supplied evidence array.",
+      "7. Never invent, infer, or create evidence references that are not present in the supplied evidence array.",
+      "8. Return JSON only. Do not wrap the JSON in markdown code fences."
     ].join('\n');
 
     try {
@@ -72,6 +95,15 @@ class AskGenerator {
 
         if (!validated) {
           throw new Error('Gemini returned an invalid Ask AI response structure');
+        }
+
+        if (
+          !AskGenerator.validateEvidenceReferences(
+            validated.evidence,
+            canonical.evidence
+          )
+        ) {
+          throw new Error('Gemini returned unsupported evidence references');
         }
 
         return validated;
@@ -96,4 +128,3 @@ class AskGenerator {
 }
 
 module.exports = AskGenerator;
-

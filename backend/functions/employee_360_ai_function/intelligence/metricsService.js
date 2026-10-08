@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const DateUtils = require('../utils/dates');
 const { DATA_CLASSIFICATION } = require('../config/constants');
@@ -25,7 +25,12 @@ class MetricsService {
     }
 
     // 2. Attendance rate
-    if (att.totalWorkingDays && att.totalWorkingDays > 0) {
+    if (
+      Number.isFinite(att.totalWorkingDays) &&
+      att.totalWorkingDays > 0 &&
+      Number.isFinite(att.presentDays) &&
+      att.presentDays >= 0
+    ) {
       const percentage = Math.round((att.presentDays / att.totalWorkingDays) * 100);
       metrics.attendancePercentage = {
         value: percentage,
@@ -42,9 +47,27 @@ class MetricsService {
 
     // 3. Leave Utilization
     const balanceItems = Array.isArray(leave.balance) ? leave.balance : [];
-    const totalEntitled = balanceItems.reduce((acc, curr) => acc + (curr.entitled || 0), 0);
-    const totalTaken = leave.takenThisYear || 0;
-    if (totalEntitled > 0) {
+    const entitledValues = balanceItems
+      .map(item => item?.entitled)
+      .filter(value => Number.isFinite(value) && value >= 0);
+
+    const takenValues = balanceItems
+      .map(item => item?.taken)
+      .filter(value => Number.isFinite(value) && value >= 0);
+
+    const totalEntitled = entitledValues.length > 0
+      ? entitledValues.reduce((acc, value) => acc + value, 0)
+      : null;
+
+    const totalTaken = takenValues.length > 0
+      ? takenValues.reduce((acc, value) => acc + value, 0)
+      : null;
+
+    if (
+      totalEntitled !== null &&
+      totalEntitled > 0 &&
+      totalTaken !== null
+    ) {
       const rate = Math.round((totalTaken / totalEntitled) * 100);
       metrics.leaveUtilization = {
         value: rate,
@@ -78,3 +101,5 @@ class MetricsService {
 }
 
 module.exports = MetricsService;
+
+

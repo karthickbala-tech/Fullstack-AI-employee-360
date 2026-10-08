@@ -5,6 +5,7 @@ const Employee360Builder = require('../intelligence/employee360Builder');
 const Employee360Repository = require('../repositories/employee360Repository');
 const EvidenceRepository = require('../repositories/evidenceRepository');
 const Logger = require('../utils/logger');
+const { NotFoundError } = require('../utils/errors');
 
 class Employee360Service {
   constructor() {
@@ -19,11 +20,16 @@ class Employee360Service {
       requestId: context.requestId
     });
 
-    // 1. Fetch raw data from Zoho People connector
+    // 1. Fetch raw data from Zoho People connector.
+    //    Upstream failures propagate as mapped API errors; an unknown employee is a 404.
     const rawData = await this.zohoService.getEmployeeRawData(
       employeeId,
       context
     );
+
+    if (!rawData || rawData.available !== true) {
+      throw new NotFoundError(`Employee '${employeeId}' was not found in Zoho People`);
+    }
 
     // 2. Build normalized Canonical Model with deterministic metrics,
     //    timeline and evidence
@@ -56,9 +62,9 @@ class Employee360Service {
           ...item,
           employeeId,
           sourceRecordId:
-            item.sourceRecordId ||
-            canonical.metadata?.employeeId ||
-            employeeId,
+  item.sourceRecordId !== undefined
+    ? item.sourceRecordId
+    : canonical.metadata?.sourceRecordId || null,
           observedAt:
             item.sourceTimestamp || null
         }));

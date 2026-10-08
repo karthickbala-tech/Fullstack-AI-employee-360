@@ -3,15 +3,17 @@
 const { HTTP_STATUS } = require('../config/constants');
 const ApiResponse = require('../models/apiResponseModel');
 const Logger = require('./logger');
+const { AppError } = require('./errors');
 
 class HttpUtils {
-  static sendJson(res, statusCode, body) {
+  static sendJson(res, statusCode, body, extraHeaders = {}) {
     res.writeHead(statusCode, {
       'Content-Type': 'application/json; charset=utf-8',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-employee-id',
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      ...extraHeaders
     });
     res.end(JSON.stringify(body));
   }
@@ -22,11 +24,14 @@ class HttpUtils {
   }
 
   static sendError(res, error) {
-    const statusCode = error.statusCode && typeof error.statusCode === 'number'
+    // Only errors raised deliberately by this service (AppError) carry a
+    // client-safe status, code and message. Anything else is reported generically.
+    const isAppError = error instanceof AppError;
+    const statusCode = isAppError && typeof error.statusCode === 'number'
       ? error.statusCode
       : HTTP_STATUS.INTERNAL_ERROR;
-    const code = error.code || 'INTERNAL_ERROR';
-    const message = error.message || 'An internal error occurred';
+    const code = isAppError && error.code ? error.code : 'INTERNAL_ERROR';
+    const message = isAppError && error.message ? error.message : 'An internal error occurred';
 
     if (statusCode >= 500) {
       Logger.error('Internal server error handled at HTTP boundary', error);
@@ -34,8 +39,13 @@ class HttpUtils {
       Logger.warn(`HTTP ${statusCode} client response`, { code, message });
     }
 
+    const extraHeaders = {};
+    if (statusCode === HTTP_STATUS.TOO_MANY_REQUESTS && Number.isFinite(error.retryAfterSeconds)) {
+      extraHeaders['Retry-After'] = String(Math.ceil(error.retryAfterSeconds));
+    }
+
     const responsePayload = ApiResponse.error(code, message);
-    this.sendJson(res, statusCode, responsePayload);
+    this.sendJson(res, statusCode, responsePayload, extraHeaders);
   }
 
   static async parseJsonBody(req, maxBytes = 1048576) {

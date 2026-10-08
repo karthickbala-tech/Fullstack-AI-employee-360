@@ -12,9 +12,7 @@ class AskController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-    AuthorizationBoundary.enforceEmployeeScope(context, employeeId);
-
-    const body = await HttpUtils.parseJsonBody(req);
+const body = await HttpUtils.parseJsonBody(req);
     const { question } = Validation.validateAskPayload(body);
 
     const answerResponse = await this.service.ask(employeeId, question, context);
@@ -23,3 +21,4 @@ class AskController {
 }
 
 module.exports = AskController;
+

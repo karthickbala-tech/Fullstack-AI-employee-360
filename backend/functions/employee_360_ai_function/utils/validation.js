@@ -26,6 +26,14 @@ class Validation {
     return cleanId;
   }
 
+  static validateFormLinkName(formLinkName) {
+    const clean = typeof formLinkName === 'string' ? formLinkName.trim() : '';
+    if (!/^[A-Za-z0-9_]{1,100}$/.test(clean)) {
+      throw new ValidationError('formLinkName must contain only letters, digits and underscores (max 100)');
+    }
+    return clean;
+  }
+
   static validateAskPayload(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new ValidationError('Request body must be a valid JSON object');

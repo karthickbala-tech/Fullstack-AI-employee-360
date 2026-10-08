@@ -1,287 +1,344 @@
-'use strict';
+﻿'use strict';
 
 const ZohoPeopleClient = require('./zohoPeopleClient');
 const ZohoPeopleEnvironment = require('./zohoPeopleEnvironment');
+const ZohoPeopleFormsService = require('./zohoPeopleFormsService');
+const {
+  NotFoundError,
+  ConflictError,
+  ExternalServiceError,
+  RateLimitError
+} = require('../../utils/errors');
 const Logger = require('../../utils/logger');
+
+// Forms API getRecords: `sIndex` starts at 1, `limit` max 200
+// (https://www.zoho.com/people/api/bulk-records.html).
+const DIRECTORY_PAGE_SIZE = 200;
+const DIRECTORY_MAX_PAGES = 50;
+
+function normalizeId(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+}
 
 class ZohoPeopleEmployeeService {
   constructor(client = null) {
     this.client = client || new ZohoPeopleClient();
+    this.formsService = new ZohoPeopleFormsService(this.client);
+  }
+
+  /**
+   * Flattens a Forms API getRecords response into [{ recordId, fields }].
+   * Zoho keys each record by its record ID: result = [{ "<recordId>": [ {fields} ] }].
+   */
+  static unwrapRecords(res) {
+    const result = res?.response?.result ?? res?.result;
+    const items = Array.isArray(result) ? result : (result && typeof result === 'object' ? [result] : []);
+    const records = [];
+
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+
+      for (const [key, value] of Object.entries(item)) {
+        const entries = Array.isArray(value) ? value : [value];
+
+        for (const fields of entries) {
+          if (!fields || typeof fields !== 'object' || Array.isArray(fields)) continue;
+
+          const recordId = normalizeId(fields.Zoho_ID) || (/^\d+$/.test(key) ? key : null);
+          records.push({ recordId, fields });
+        }
+      }
+    }
+
+    return records;
+  }
+
+  /**
+   * getRecordByID returns the record grouped by section; collect every object
+   * that carries employee form fields.
+   */
+  static findEmployeeObjects(value) {
+    if (!value || typeof value !== 'object') return [];
+    if (Array.isArray(value)) return value.flatMap(item => ZohoPeopleEmployeeService.findEmployeeObjects(item));
+    if (value.EmployeeID !== undefined || value.EmailID !== undefined || value.Zoho_ID !== undefined) {
+      return [value];
+    }
+    return Object.values(value).flatMap(item => ZohoPeopleEmployeeService.findEmployeeObjects(item));
+  }
+
+  /**
+   * Reporting_To on a directory record is "<manager name> <manager EmployeeID>".
+   * The trailing token is accepted only when it is the EmployeeID of exactly one
+   * record in the same directory; anything else yields null rather than a guess.
+   */
+  static resolveReportingManagerId(reportingTo, employeeIdCounts) {
+    if (typeof reportingTo !== 'string') return null;
+    const tokens = reportingTo.trim().split(/\s+/);
+    if (tokens.length < 2) return null;
+
+    const candidate = tokens[tokens.length - 1];
+    return employeeIdCounts.get(candidate) === 1 ? candidate : null;
+  }
+
+  static _isUpstreamOutage(err) {
+    return err instanceof RateLimitError ||
+      (err instanceof ExternalServiceError && (err.isAuthError || err.isPermissionError || err.zohoCode === undefined));
+  }
+
+  async _findByRecordId(recordId, context, dataCenter, endpoints) {
+    let res;
+    try {
+      res = await this.client.request(`${endpoints.employeeRecord}?recordId=${encodeURIComponent(recordId)}`, {
+        context,
+        dataCenter
+      });
+    } catch (err) {
+      if (err instanceof NotFoundError) return null;
+      throw err;
+    }
+
+    const objects = ZohoPeopleEmployeeService.findEmployeeObjects(res?.response?.result ?? res?.result);
+    const matches = objects.filter(fields => normalizeId(fields.Zoho_ID) === null || normalizeId(fields.Zoho_ID) === recordId);
+    if (matches.length === 0) return null;
+
+    // getRecordByID can split one record across sections; merge them.
+    const fields = Object.assign({}, ...matches);
+    return { recordId, fields };
+  }
+
+  async _findByEmployeeId(employeeId, context, dataCenter, endpoints) {
+    let candidates = [];
+
+    try {
+      const res = await this.client.request(endpoints.employeeList, {
+        context,
+        dataCenter,
+        params: { searchColumn: 'EMPLOYEEID', searchValue: employeeId }
+      });
+      candidates = ZohoPeopleEmployeeService.unwrapRecords(res);
+    } catch (err) {
+      if (!(err instanceof NotFoundError)) {
+        if (ZohoPeopleEmployeeService._isUpstreamOutage(err)) throw err;
+        Logger.warn('Zoho People EMPLOYEEID search rejected; falling back to directory scan', {
+          employeeId,
+          zohoCode: err.zohoCode ?? null
+        });
+      }
+    }
+
+    let match = this._selectByEmployeeId(candidates, employeeId);
+
+    if (match === null && candidates.length === 0) {
+      // Search returned nothing usable; confirm against the full directory.
+      const directory = await this._listAllEmployeeRecords(context);
+      match = this._selectByEmployeeId(directory, employeeId);
+    }
+
+    return match;
+  }
+
+  /**
+   * Exact EmployeeID match first; a single case-insensitive match second.
+   * More than one match is ambiguous and is never resolved by picking the first.
+   */
+  _selectByEmployeeId(records, employeeId) {
+    const exact = records.filter(r => normalizeId(r.fields.EmployeeID) === employeeId);
+    if (exact.length === 1) return exact[0];
+    if (exact.length > 1) {
+      throw new ConflictError(`Employee ID '${employeeId}' matches more than one Zoho People record`);
+    }
+
+    const lower = employeeId.toLowerCase();
+    const caseInsensitive = records.filter(r => (normalizeId(r.fields.EmployeeID) || '').toLowerCase() === lower);
+    if (caseInsensitive.length === 1) return caseInsensitive[0];
+    if (caseInsensitive.length > 1) {
+      throw new ConflictError(`Employee ID '${employeeId}' matches more than one Zoho People record`);
+    }
+
+    return null;
+  }
+
+  /**
+   * Reads every employee form record, page by page.
+   */
+  async _listAllEmployeeRecords(context = null, pageSize = DIRECTORY_PAGE_SIZE) {
+    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;
+    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);
+    const all = [];
+    let previousPageKey = null;
+
+    for (let page = 0; page < DIRECTORY_MAX_PAGES; page++) {
+      const sIndex = 1 + page * pageSize;
+      let records;
+
+      try {
+        const res = await this.client.request(endpoints.employeeList, {
+          context,
+          dataCenter,
+          params: { sIndex, limit: pageSize }
+        });
+        records = ZohoPeopleEmployeeService.unwrapRecords(res);
+      } catch (err) {
+        if (err instanceof NotFoundError) break; // 7024: no records beyond this index
+        throw err;
+      }
+
+      if (records.length === 0) break;
+
+      const pageKey = records.map(r => r.recordId).join(',');
+      if (pageKey === previousPageKey) {
+        throw new ExternalServiceError('Zoho People returned the same directory page twice');
+      }
+      previousPageKey = pageKey;
+
+      all.push(...records);
+      Logger.info('Fetched Zoho People employee directory page', { sIndex, count: records.length });
+
+      if (records.length < pageSize) return all;
+    }
+
+    if (all.length >= DIRECTORY_MAX_PAGES * pageSize) {
+      throw new ExternalServiceError('Zoho People employee directory exceeds the supported page limit');
+    }
+
+    return all;
   }
 
   async getEmployeeRawData(employeeId, context = null) {
-    Logger.info(`Fetching employee raw data in real-time from Zoho People via Catalyst Connection`, { employeeId });
+    Logger.info('Fetching employee raw data in real-time from Zoho People via Catalyst Connection', { employeeId });
 
     const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;
     const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);
+    const cleanId = normalizeId(employeeId);
 
-    let rawRecord = null;
-    let attendanceData = null;
-    let leaveData = null;
+    let match = null;
 
-    // Helper to unwrap Zoho People results
-    const unwrapRecords = (res) => {
-  if (!res) return [];
-
-  const flatten = (value) => {
-    if (!value) return [];
-
-    if (Array.isArray(value)) {
-      return value.flatMap(item => flatten(item));
+    if (cleanId && /^\d+$/.test(cleanId)) {
+      match = await this._findByRecordId(cleanId, context, dataCenter, endpoints);
     }
 
-    if (typeof value !== 'object') {
-      return [];
+    if (!match && cleanId) {
+      match = await this._findByEmployeeId(cleanId, context, dataCenter, endpoints);
     }
 
-    // This is already an employee record.
-    if (
-      value.EmployeeID ||
-      value.EMPLOYEEID ||
-      value.Employeename ||
-      value.FirstName ||
-      value.EmailID ||
-      value.Zoho_ID
-    ) {
-      return [value];
-    }
-
-    // Otherwise descend into wrapper/object values.
-    return Object.values(value).flatMap(item => flatten(item));
-  };
-
-  if (res.response?.result !== undefined) {
-    return flatten(res.response.result);
-  }
-
-  if (res.result !== undefined) {
-    return flatten(res.result);
-  }
-
-  return flatten(res);
-};
-
-    const cleanId = String(employeeId || '').trim();
-    const isNumericRecordId = /^\d+$/.test(cleanId);
-    const isEmail = cleanId.includes('@');
-
-    try {
-      // 1. If employeeId is purely numeric, it is a Zoho internal recordId
-      if (isNumericRecordId) {
-        try {
-          const byIdUrl = `${endpoints.employeeRecord}?recordId=${encodeURIComponent(cleanId)}`;
-          const res = await this.client.request(byIdUrl, { context, dataCenter });
-          const list = unwrapRecords(res);
-          if (list.length > 0) {
-            rawRecord = list[0];
-          }
-        } catch (byIdErr) {
-          if (byIdErr.isAuthError) throw byIdErr;
-          // Silent fallback to column searches if numeric recordId did not resolve
-        }
-      }
-
-      // 2. If it is an email address, search by EmailID
-      if (!rawRecord && isEmail) {
-        try {
-          const emailUrl = `${endpoints.employeeList}?searchColumn=EmailID&searchValue=${encodeURIComponent(cleanId)}`;
-          const res = await this.client.request(emailUrl, { context, dataCenter });
-          const list = unwrapRecords(res);
-          if (list.length > 0) {
-            rawRecord = list[0];
-          }
-        } catch (emailErr) {
-          if (emailErr.isAuthError) throw emailErr;
-        }
-      }
-
-      // 3. For alphanumeric codes (e.g. OWN01), search by EMPLOYEEID
-      if (!rawRecord) {
-        try {
-
-          const searchUrl = `${endpoints.employeeList}?searchColumn=EMPLOYEEID&searchValue=${encodeURIComponent(cleanId)}`;
-          const res = await this.client.request(searchUrl, { context, dataCenter });
-          const list = unwrapRecords(res);
-          if (list.length > 0) {
-            rawRecord = list[0];
-          }
-        } catch (searchErr) {
-          if (searchErr.isAuthError) throw searchErr;
-        }
-      }
-
-      // 4. Try searching by EmployeeID (alternate casing in some Zoho People forms)
-      if (!rawRecord) {
-        try {
-          const searchUrl = `${endpoints.employeeList}?searchColumn=EmployeeID&searchValue=${encodeURIComponent(cleanId)}`;
-          const res = await this.client.request(searchUrl, { context, dataCenter });
-          const list = unwrapRecords(res);
-          if (list.length > 0) {
-            rawRecord = list[0];
-          }
-        } catch (altErr) {
-          if (altErr.isAuthError) throw altErr;
-        }
-      }
-
-      // 5. Try fetching live records list and matching exact ID, email or name
-      if (!rawRecord) {
-        try {
-          const allUrl = `${endpoints.employeeList}?limit=200`;
-          const res = await this.client.request(allUrl, { context, dataCenter });
-          const list = unwrapRecords(res);
-          rawRecord = list.find(r => {
-            const empNum = r.EMPLOYEEID || r.EmpId || r.EmployeeID || r['Employee ID'] || r.recordId || r.pkId;
-            const email = r.EmailID || r.email || r['Email ID'];
-            const name = r.Employeename || r.fullName || r['Employee Name'];
-            return (
-              (empNum && String(empNum).trim().toUpperCase() === cleanId.toUpperCase()) ||
-              (email && String(email).trim().toLowerCase() === cleanId.toLowerCase()) ||
-              (name && String(name).trim().toUpperCase() === cleanId.toUpperCase())
-            );
-          });
-        } catch (allErr) {
-          if (allErr.isAuthError) throw allErr;
-        }
-      }
-
-      // If record found, also attempt real-time attendance and leave
-      if (rawRecord) {
-        
-        const zohoEmpId =
-  rawRecord.EmployeeID ||
-  rawRecord.EMPLOYEEID ||
-  rawRecord.EmpId ||
-  employeeId;
-
-        // Fetch real-time attendance
-        try {
-          const attUrl = `${endpoints.attendanceSummary}?empId=${encodeURIComponent(zohoEmpId)}`;
-          const attRes = await this.client.request(attUrl, { context, dataCenter });
-          attendanceData = attRes?.response?.result || attRes?.result || attRes;
-        } catch (attErr) {
-          Logger.info('Attendance real-time lookup skipped', { error: attErr.message });
-        }
-
-        // Fetch real-time leave
-        try {
-          const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(zohoEmpId)}`;
-          const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });
-          leaveData = leaveRes?.response?.result || leaveRes?.result || leaveRes;
-        } catch (leaveErr) {
-          Logger.info('Leave real-time lookup skipped', { error: leaveErr.message });
-        }
-      }
-    } catch (err) {
-      if (err.isAuthError) {
-        return {
-          source: 'zoho_people',
-          employeeId,
-          available: false,
-          error: 'AUTH_REQUIRED',
-          message: `Zoho People authentication via Catalyst Connection '${this.client.connectionName}' failed or token expired.`
-        };
-      }
-      Logger.warn(`Live Zoho People fetch error for ${employeeId}:`, { message: err.message });
+    if (!match) {
       return {
         source: 'zoho_people',
         employeeId,
         available: false,
-        error: 'CONNECTION_ERROR',
-        message: `Failed to query Zoho People API: ${err.message}`
+        error: 'NOT_FOUND',
+        message: `Employee "${employeeId}" not found in Zoho People.`
       };
     }
 
-    
+    const rawRecord = match.fields;
+    const zohoEmpId = normalizeId(rawRecord.EmployeeID) || cleanId;
+    let attendanceData = null;
+    let leaveData = null;
+    let lifecycleData = null;
 
-if (!rawRecord) {
-  return {
-    source: 'zoho_people',
-    employeeId,
-    available: false,
-    error: 'NOT_FOUND',
-    message: `Employee "${employeeId}" not found in Zoho People. Please ensure the employee exists in your Zoho People portal.`
-  };
-}
+    // Attendance and leave remain best-effort until their APIs are verified (Phase 2).
+    try {
+      const attUrl = `${endpoints.attendanceSummary}?empId=${encodeURIComponent(zohoEmpId)}`;
+      const attRes = await this.client.request(attUrl, { context, dataCenter });
+      attendanceData = attRes?.response?.result || attRes?.result || null;
+    } catch (attErr) {
+      Logger.info('Attendance real-time lookup skipped', { code: attErr.code, zohoCode: attErr.zohoCode ?? null });
+    }
+
+    try {
+      const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(zohoEmpId)}`;
+      const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });
+      leaveData = leaveRes?.response?.result || leaveRes?.result || null;
+    } catch (leaveErr) {
+      Logger.info('Leave real-time lookup skipped', { code: leaveErr.code, zohoCode: leaveErr.zohoCode ?? null });
+    }
+
+    try {
+      lifecycleData = await this.formsService.getLifecycleRecords(cleanId, context);
+      Logger.info('Lifecycle real-time lookup completed', {
+        employeeId: cleanId,
+        forms: Object.keys(lifecycleData || {})
+      });
+    } catch (lifecycleErr) {
+      Logger.info('Lifecycle real-time lookup skipped', {
+        employeeId: cleanId,
+        code: lifecycleErr.code,
+        zohoCode: lifecycleErr.zohoCode ?? null
+      });
+    }
 
     return {
       source: 'zoho_people',
       employeeId,
       available: true,
+      recordId: match.recordId,
       raw: rawRecord,
       attendance: attendanceData,
-      leave: leaveData
+      leave: leaveData,
+      lifecycle: lifecycleData
     };
   }
 
   /**
-   * Fetches the real-time list of all employees currently in Zoho People using the Catalyst Connection
+   * Fetches the real-time list of all employees currently in Zoho People using the Catalyst Connection.
+   * Records without a stable EmployeeID and record ID are dropped.
    */
-  async getLiveEmployeeDirectory(context = null) {
-    const dataCenter = context?.dataCenter || this.client.tenantConfig.dataCenter;
-    const endpoints = ZohoPeopleEnvironment.getEndpoints(dataCenter);
+  async getLiveEmployeeDirectory(context = null, options = {}) {
+    const records = await this._listAllEmployeeRecords(context, options.pageSize || DIRECTORY_PAGE_SIZE);
+    const directory = [];
+    let dropped = 0;
 
-    const pageSize = 200;
-    let startIndex = 0;
-    const flatList = [];
-
-    while (true) {
-      const url = `${endpoints.employeeList}?startIndex=${startIndex}&limit=${pageSize}`;
-
-      const res = await this.client.request(url, { context, dataCenter });
-
-      const records = Array.isArray(res)
-        ? res
-        : (res?.response?.result || res?.result || []);
-
-      const pageRecords = [];
-
-      if (Array.isArray(records)) {
-        for (const item of records) {
-          if (!item || typeof item !== 'object') continue;
-
-          for (const value of Object.values(item)) {
-            if (Array.isArray(value)) {
-              pageRecords.push(...value);
-            } else if (value && typeof value === 'object') {
-              pageRecords.push(value);
-            }
-          }
-        }
-      } else if (records && typeof records === 'object') {
-        for (const value of Object.values(records)) {
-          if (Array.isArray(value)) {
-            pageRecords.push(...value);
-          } else if (value && typeof value === 'object') {
-            pageRecords.push(value);
-          }
-        }
-      }
-
-      flatList.push(...pageRecords);
-
-      if (pageRecords.length < pageSize) {
-        break;
-      }
-
-      startIndex += pageSize;
+    const employeeIdCounts = new Map();
+    for (const { fields } of records) {
+      const id = normalizeId(fields.EmployeeID);
+      if (id) employeeIdCounts.set(id, (employeeIdCounts.get(id) || 0) + 1);
     }
 
-    return flatList
-      .filter(r => r && typeof r === 'object')
-      .map(r => ({
-        recordId: r.Zoho_ID || r.recordId || r.pkId || null,
-        employeeId: r.EmployeeID || null,
-        fullName: `${r.FirstName || ''} ${r.LastName || ''}`.trim() || 'Unknown',
-        jobTitle: r.Designation || null,
-        department: r.Department || null,
-        email: r.EmailID || null,
-        workLocation: r.LocationName || r.Work_location || null,
-        status: r.Employeestatus || null
-      }));
+    for (const { recordId, fields } of records) {
+      const employeeId = normalizeId(fields.EmployeeID);
+
+      if (!employeeId || !recordId) {
+        dropped += 1;
+        continue;
+      }
+
+      directory.push({
+        recordId,
+        employeeId,
+        fullName: [fields.FirstName, fields.LastName].map(normalizeId).filter(Boolean).join(' ') || null,
+        jobTitle: fields.Designation || null,
+        department: fields.Department || null,
+        email: fields.EmailID || null,
+        workLocation: fields.LocationName || null,
+        status: fields.Employeestatus || null,
+        reportingManagerId: ZohoPeopleEmployeeService.resolveReportingManagerId(fields.Reporting_To, employeeIdCounts)
+      });
+    }
+
+    if (dropped > 0) {
+      Logger.warn('Dropped Zoho People records without a stable employee identifier', { dropped });
+    }
+
+    return directory;
+  }
+
+  /**
+   * Returns directory entries whose EmailID equals the given address (case-insensitive).
+   */
+  async findEmployeesByEmail(email, context = null) {
+    const target = normalizeId(email);
+    if (!target) return [];
+    const lower = target.toLowerCase();
+    const directory = await this.getLiveEmployeeDirectory(context);
+    return directory.filter(entry => (entry.email || '').trim().toLowerCase() === lower);
   }
 }
 
 module.exports = ZohoPeopleEmployeeService;
+
+
 
 

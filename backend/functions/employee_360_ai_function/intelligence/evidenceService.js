@@ -1,10 +1,10 @@
-'use strict';
+﻿'use strict';
 
 const EvidenceItem = require('../models/evidenceModel');
 const { DATA_CLASSIFICATION } = require('../config/constants');
 
 class EvidenceService {
-  static extractEvidence(canonical) {
+  static extractEvidence(canonical, lifecycleData = {}) {
     const evidenceList = [];
 
     if (canonical.employee?.email) {
@@ -51,7 +51,10 @@ class EvidenceService {
         canonical.deterministicMetrics.tenure.formatted;
     }
 
-    if (canonical.performance?.overallRating !== null && canonical.performance?.overallRating !== undefined) {
+    if (
+      canonical.performance?.overallRating !== null &&
+      canonical.performance?.overallRating !== undefined
+    ) {
       evidenceList.push(new EvidenceItem({
         domain: 'performance',
         field: 'overallRating',
@@ -64,6 +67,49 @@ class EvidenceService {
 
       evidenceList[evidenceList.length - 1].value =
         canonical.performance.overallRating;
+    }
+
+    const lifecycleEvidence = [
+      {
+        formLinkName: 'zp_resignation',
+        field: 'resignationInitiated',
+        note: 'A matching resignation record was directly obtained from the Zoho People resignation form.'
+      },
+      {
+        formLinkName: 'zp_termination',
+        field: 'terminationRecorded',
+        note: 'A matching termination record was directly obtained from the Zoho People termination form.'
+      },
+      {
+        formLinkName: 'zp_deceased',
+        field: 'deceasedRecorded',
+        note: 'A matching deceased lifecycle record was directly obtained from the Zoho People deceased form.'
+      },
+      {
+        formLinkName: 'exitinterview',
+        field: 'separationRecorded',
+        note: 'A matching separation record was directly obtained from the Zoho People exit interview form.'
+      }
+    ];
+
+    for (const item of lifecycleEvidence) {
+      const form = lifecycleData?.[item.formLinkName];
+
+      if (!Array.isArray(form?.records) || form.records.length === 0) {
+        continue;
+      }
+
+      evidenceList.push(new EvidenceItem({
+        domain: 'lifecycle',
+        field: item.field,
+        source: `Zoho People (${item.formLinkName} Form)`,
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: null,
+        confidence: 'high',
+        notes: item.note
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = true;
     }
 
     return evidenceList;

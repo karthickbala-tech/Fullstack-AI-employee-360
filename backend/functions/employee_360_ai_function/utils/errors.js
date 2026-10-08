@@ -37,6 +37,19 @@ class NotFoundError extends AppError {
   }
 }
 
+class ConflictError extends AppError {
+  constructor(message = 'Request conflicts with the current state of the resource', details = null) {
+    super(message, ERROR_CODES.CONFLICT, HTTP_STATUS.CONFLICT, details);
+  }
+}
+
+class RateLimitError extends AppError {
+  constructor(message = 'Upstream rate limit reached. Retry later.', retryAfterSeconds = null) {
+    super(message, ERROR_CODES.RATE_LIMITED, HTTP_STATUS.TOO_MANY_REQUESTS);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 class ConfigurationError extends AppError {
   constructor(message = 'Application configuration error', details = null) {
     super(message, ERROR_CODES.INTERNAL_ERROR, HTTP_STATUS.INTERNAL_ERROR, details);
@@ -67,6 +80,8 @@ module.exports = {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
+  ConflictError,
+  RateLimitError,
   ConfigurationError,
   ExternalServiceError,
   AIProviderError,

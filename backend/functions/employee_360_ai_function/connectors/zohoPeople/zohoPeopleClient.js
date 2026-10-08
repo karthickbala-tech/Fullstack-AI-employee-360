@@ -2,8 +2,19 @@
 
 const Environment = require('../../config/environment');
 const ZohoPeopleEnvironment = require('./zohoPeopleEnvironment');
-const { ExternalServiceError, ConfigurationError } = require('../../utils/errors');
+const {
+  ExternalServiceError,
+  ConfigurationError,
+  NotFoundError,
+  RateLimitError
+} = require('../../utils/errors');
 const Logger = require('../../utils/logger');
+
+// Zoho People error codes (https://www.zoho.com/people/api/error-codes.html and Forms API pages)
+const ZOHO_AUTH_CODES = new Set([7202]); // Invalid Authtoken
+const ZOHO_PERMISSION_CODES = new Set([7037, 7038, 7039, 7040, 7041]); // permission denied variants
+const ZOHO_NOT_FOUND_CODES = new Set([7011, 7024, 7049]); // invalid form, no records, no record for ID
+const DEFAULT_TIMEOUT_MS = 15000;
 
 class ZohoPeopleClient {
   constructor(tenantConfig = null) {
@@ -84,206 +95,247 @@ class ZohoPeopleClient {
         throw sdkErr;
       }
 
+      Logger.error('Catalyst Connection credential lookup failed', sdkErr, {
+        connectionName: this.connectionName
+      });
+
       throw new ExternalServiceError(
-        `Failed to obtain credentials from Catalyst Connection '${this.connectionName}': ${sdkErr.message}`
+        `Failed to obtain credentials from Catalyst Connection '${this.connectionName}'`
       );
     }
+  }
+
+  /**
+   * Parses a Zoho People JSON body without losing precision.
+   * Zoho record/component IDs exceed Number.MAX_SAFE_INTEGER, so any unsafe
+   * integer is returned as its exact source text (a string).
+   */
+  static parseJson(rawText) {
+    return JSON.parse(rawText, (key, value, context) => {
+      if (
+        typeof value === 'number' &&
+        !Number.isSafeInteger(value) &&
+        context &&
+        typeof context.source === 'string' &&
+        /^-?\d+$/.test(context.source)
+      ) {
+        return context.source;
+      }
+      return value;
+    });
+  }
+
+  /**
+   * Returns { code, message } when the body carries a Zoho People error, else null.
+   */
+  static extractZohoError(data) {
+    const errors = data?.response?.errors;
+    if (!errors) return null;
+    const first = Array.isArray(errors) ? errors[0] : errors;
+    if (!first || typeof first !== 'object') {
+      return { code: null, message: String(first || 'Unknown Zoho People error') };
+    }
+    const code = first.code !== undefined && first.code !== null ? Number(first.code) : null;
+    return { code: Number.isFinite(code) ? code : null, message: String(first.message || '') };
+  }
+
+  /**
+   * Maps a Zoho People error to an API error. The client-facing message is generic;
+   * the upstream message is kept on the error for internal logging only.
+   */
+  static mapZohoError(code, upstreamMessage) {
+    let err;
+    if (ZOHO_NOT_FOUND_CODES.has(code)) {
+      err = new NotFoundError('Requested Zoho People resource was not found');
+    } else if (ZOHO_AUTH_CODES.has(code)) {
+      err = new ExternalServiceError('Zoho People rejected the Catalyst Connection credentials');
+      err.isAuthError = true;
+    } else if (ZOHO_PERMISSION_CODES.has(code)) {
+      err = new ExternalServiceError('Zoho People denied access for the configured connection');
+      err.isPermissionError = true;
+    } else if (/limit|throttl|exceed/i.test(upstreamMessage || '')) {
+      err = new RateLimitError();
+      err.retryable = true;
+    } else {
+      err = new ExternalServiceError(`Zoho People returned an error${code !== null ? ` (code ${code})` : ''}`);
+    }
+    err.zohoCode = code;
+    err.upstreamMessage = String(upstreamMessage || '').slice(0, 300);
+    return err;
+  }
+
+  static mapHttpError(status, retryAfterHeader) {
+    let err;
+    if (status === 429) {
+      const seconds = Number(retryAfterHeader);
+      err = new RateLimitError(undefined, Number.isFinite(seconds) ? seconds : null);
+      err.retryable = true;
+      if (Number.isFinite(seconds)) {
+        err.retryAfterMs = Math.max(0, Math.min(seconds * 1000, 10000));
+      }
+    } else {
+      err = new ExternalServiceError(`Zoho People returned HTTP ${status}`);
+      err.retryable = status === 502 || status === 503 || status === 504;
+      err.isAuthError = status === 401;
+      err.isPermissionError = status === 403;
+    }
+    err.upstreamStatus = status;
+    return err;
   }
 
   /**
    * Dispatches request to Zoho People API with access token from Catalyst Connection
    */
   async request(path, options = {}) {
-  const dc = options.dataCenter || this.tenantConfig.dataCenter;
-  const baseUrl = this.getBaseUrl(dc);
+    const dc = options.dataCenter || this.tenantConfig.dataCenter;
+    const baseUrl = this.getBaseUrl(dc);
 
-  let url = path.startsWith('http') ? path : `${baseUrl}${path}`;
+    let url = path.startsWith('http') ? path : `${baseUrl}${path}`;
 
-  // Optional query parameters.
-  // Existing callers that construct query strings manually remain compatible.
-  if (options.params && typeof options.params === 'object') {
-    const searchParams = new URLSearchParams();
+    // Optional query parameters.
+    // Existing callers that construct query strings manually remain compatible.
+    if (options.params && typeof options.params === 'object') {
+      const searchParams = new URLSearchParams();
 
-    for (const [key, value] of Object.entries(options.params)) {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, String(value));
+      for (const [key, value] of Object.entries(options.params)) {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, String(value));
+        }
+      }
+
+      const queryString = searchParams.toString();
+
+      if (queryString) {
+        url += url.includes('?') ? `&${queryString}` : `?${queryString}`;
       }
     }
 
-    const queryString = searchParams.toString();
+    const req = options.req || options.context?.req || null;
+    const connectionCredentials = await this._resolveConnectionCredentials(req);
 
-    if (queryString) {
-      url += url.includes('?') ? `&${queryString}` : `?${queryString}`;
-    }
-  }
+    const headers = {
+      Accept: 'application/json',
+      ...(connectionCredentials.headers || {}),
+      ...(options.headers || {})
+    };
 
-  const req = options.req || options.context?.req || null;
-  const connectionCredentials = await this._resolveConnectionCredentials(req);
+    const method = options.method || 'GET';
 
-  const headers = {
-    Accept: 'application/json',
-    ...(connectionCredentials.headers || {}),
-    ...(options.headers || {})
-  };
+    let body;
 
-  const method = options.method || 'GET';
+    if (options.formData && typeof options.formData === 'object') {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
 
-  let body;
+      const formParams = new URLSearchParams();
 
-  if (options.formData && typeof options.formData === 'object') {
-    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      for (const [key, value] of Object.entries(options.formData)) {
+        if (value !== undefined && value !== null) {
+          formParams.append(key, String(value));
+        }
+      }
 
-    const formParams = new URLSearchParams();
-
-    for (const [key, value] of Object.entries(options.formData)) {
-      if (value !== undefined && value !== null) {
-        formParams.append(key, String(value));
+      body = formParams.toString();
+    } else if (options.body !== undefined && options.body !== null) {
+      if (typeof options.body === 'string') {
+        body = options.body;
+      } else {
+        headers['Content-Type'] = 'application/json';
+        body = JSON.stringify(options.body);
       }
     }
 
-    body = formParams.toString();
-  } else if (options.body !== undefined && options.body !== null) {
-    if (typeof options.body === 'string') {
-      body = options.body;
-    } else {
-      headers['Content-Type'] = 'application/json';
-      body = JSON.stringify(options.body);
-    }
-  }
+    const maxRetries = Number.isInteger(options.maxRetries)
+      ? Math.max(0, Math.min(options.maxRetries, 2))
+      : 2;
 
-  const maxRetries = Number.isInteger(options.maxRetries)
-    ? Math.max(0, Math.min(options.maxRetries, 2))
-    : 2;
+    const timeoutMs = Number.isInteger(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : DEFAULT_TIMEOUT_MS;
 
-  let attempt = 0;
+    let attempt = 0;
 
-  while (true) {
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body
-      });
-
-      const rawText = await response.text();
-
-      let data = null;
+    while (true) {
+      let err;
 
       try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = { rawText };
-      }
+        const response = await fetch(url, {
+          method,
+          headers,
+          body,
+          signal: AbortSignal.timeout(timeoutMs)
+        });
 
-      // Check Zoho-specific error response format.
-      if (data && data.response && data.response.errors) {
-        const errObj = data.response.errors;
-        const errCode = errObj.code;
-        const errMsg = errObj.message || 'Zoho People API Error';
+        const rawText = await response.text();
 
-        if (errCode === 7202 || errCode === 7203) {
-          const authErr = new ExternalServiceError(
-            `Zoho People Authentication Failed: ${errMsg}`
-          );
+        let data = null;
 
-          authErr.isAuthError = true;
-          authErr.zohoCode = errCode;
-
-          throw authErr;
+        try {
+          data = ZohoPeopleClient.parseJson(rawText);
+        } catch {
+          data = null;
         }
 
-        const apiErr = new ExternalServiceError(
-          `Zoho People Error (${errCode}): ${errMsg}`
+        const zohoError = ZohoPeopleClient.extractZohoError(data);
+
+        if (zohoError) {
+          err = ZohoPeopleClient.mapZohoError(zohoError.code, zohoError.message);
+        } else if (!response.ok) {
+          err = ZohoPeopleClient.mapHttpError(response.status, response.headers.get('retry-after'));
+        } else if (data === null) {
+          err = new ExternalServiceError('Zoho People returned a non-JSON response');
+        } else {
+          return data;
+        }
+      } catch (fetchErr) {
+        const timedOut = fetchErr && (fetchErr.name === 'TimeoutError' || fetchErr.name === 'AbortError');
+        err = new ExternalServiceError(
+          timedOut ? 'Zoho People request timed out' : 'Zoho People request failed: network error'
         );
-
-        apiErr.zohoCode = errCode;
-        apiErr.statusCode = response.status;
-
-        throw apiErr;
+        err.retryable = true;
+        err.upstreamMessage = String(fetchErr?.message || '').slice(0, 300);
       }
 
-      if (!response.ok) {
-        const httpErr = new ExternalServiceError(
-          `Zoho People returned HTTP ${response.status}: ${rawText.slice(0, 200)}`
-        );
+      if (err.retryable && attempt < maxRetries) {
+        const delayMs = Number.isFinite(err.retryAfterMs)
+          ? err.retryAfterMs
+          : Math.min(500 * Math.pow(2, attempt), 4000);
 
-        httpErr.statusCode = response.status;
-
-        const retryableStatus =
-          response.status === 429 ||
-          response.status === 502 ||
-          response.status === 503 ||
-          response.status === 504;
-
-        httpErr.retryable = retryableStatus;
-
-        if (response.status === 429) {
-          const retryAfter = response.headers.get('retry-after');
-
-          if (retryAfter) {
-            const retryAfterSeconds = Number(retryAfter);
-
-            if (Number.isFinite(retryAfterSeconds)) {
-              httpErr.retryAfterMs = Math.max(
-                0,
-                Math.min(retryAfterSeconds * 1000, 10000)
-              );
-            }
-          }
-        }
-
-        throw httpErr;
-      }
-
-      return data;
-    } catch (err) {
-      if (
-        err instanceof ConfigurationError ||
-        err instanceof ExternalServiceError
-      ) {
-        const canRetry =
-          Boolean(err.retryable) &&
-          attempt < maxRetries;
-
-        if (!canRetry) {
-          throw err;
-        }
-
-        const delayMs =
-          Number.isFinite(err.retryAfterMs)
-            ? err.retryAfterMs
-            : Math.min(500 * Math.pow(2, attempt), 4000);
-
-        Logger.warn(
-          'Retrying Zoho People request after transient failure',
-          {
-            url,
-            method,
-            attempt: attempt + 1,
-            maxRetries,
-            statusCode: err.statusCode || null,
-            delayMs
-          }
-        );
+        Logger.warn('Retrying Zoho People request after transient failure', {
+          url,
+          method,
+          attempt: attempt + 1,
+          maxRetries,
+          code: err.code,
+          zohoCode: err.zohoCode ?? null,
+          upstreamStatus: err.upstreamStatus ?? null,
+          delayMs
+        });
 
         await this._sleep(delayMs);
-
         attempt += 1;
         continue;
       }
 
-      Logger.error(
-        'Zoho People request failed unexpectedly',
-        err,
-        { url, method }
-      );
+      if (err instanceof NotFoundError) {
+        Logger.info('Zoho People reported no matching resource', {
+          url,
+          method,
+          zohoCode: err.zohoCode ?? null
+        });
+      } else {
+        Logger.warn('Zoho People request failed', {
+          url,
+          method,
+          code: err.code,
+          zohoCode: err.zohoCode ?? null,
+          upstreamStatus: err.upstreamStatus ?? null,
+          upstreamMessage: err.upstreamMessage || null
+        });
+      }
 
-      throw new ExternalServiceError(
-        `Zoho People request failed: ${err.message}`
-      );
+      throw err;
     }
   }
-}
 
   /**
    * Tests connectivity to Zoho People using the Catalyst Connection

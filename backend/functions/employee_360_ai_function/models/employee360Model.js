@@ -5,6 +5,7 @@ class Employee360Model {
     return {
       metadata: {
         employeeId,
+        sourceRecordId: null,
         schemaVersion: '1.0.0',
         builtAt: new Date().toISOString(),
         tenantId: 'vsk_hr_solution'

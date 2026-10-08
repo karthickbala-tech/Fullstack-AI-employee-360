@@ -193,6 +193,16 @@ class EvidenceRepository {
       );
 
       if (existingRow?.ROWID) {
+        const contentColumns = ['source', 'domain', 'field', 'value', 'sourceRecordId'];
+        const unchanged = contentColumns.every(
+          column => (existingRow[column] ?? null) === (row[column] ?? null)
+        );
+
+        if (unchanged) {
+          results.push(existingRow);
+          continue;
+        }
+
         const result = await table.updateRow({
           ROWID: existingRow.ROWID,
           ...row

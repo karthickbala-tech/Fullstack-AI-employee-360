@@ -2,6 +2,7 @@
 
 const Employee360Service = require('./employee360Service');
 const TimelineRepository = require('../repositories/timelineRepository');
+const TimelineIntelligenceService = require('../intelligence/timelineService');
 const Logger = require('../utils/logger');
 
 class TimelineService {
@@ -43,29 +44,24 @@ class TimelineService {
         context
       );
 
-    // Stored events are authoritative once persisted.
-    // Add generated events only when they do not already exist.
-    const storedIds = new Set(
-      storedEvents.map(event => event.id)
-    );
+    // Events derived from the current Zoho record are authoritative. Generated and
+    // stored events share one deterministic ID, so a persisted event is never
+    // returned twice. A stored row for a derived code whose ID is no longer
+    // generated is stale (its source value changed) and is not returned.
+    const generatedEvents = canonical.timeline || [];
+    const generatedIds = new Set(generatedEvents.map(event => event.id));
+    const derivedCodes = new Set(Object.keys(TimelineIntelligenceService.definitions));
 
-    const generatedEvents = (canonical.timeline || [])
-      .filter(event => !storedIds.has(event.id))
-      .map(event => ({
-        ...event,
-        source: event.source || 'employee_360'
-      }));
+    const storedOnlyEvents = storedEvents.filter(
+      event => !generatedIds.has(event.id) && !derivedCodes.has(event.eventCode)
+    );
 
     const merged = [
-      ...storedEvents,
-      ...generatedEvents
+      ...generatedEvents,
+      ...storedOnlyEvents
     ];
 
-    merged.sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    );
+    merged.sort((a, b) => b.date.localeCompare(a.date));
 
     return {
       employeeId,

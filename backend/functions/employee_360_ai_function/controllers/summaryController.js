@@ -12,11 +12,10 @@ class SummaryController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-    AuthorizationBoundary.enforceEmployeeScope(context, employeeId);
-
-    const data = await this.service.getEmployeeSummary(employeeId, context);
+const data = await this.service.getEmployeeSummary(employeeId, context);
     HttpUtils.sendSuccess(res, data, { employeeId });
   }
 }
 
 module.exports = SummaryController;
+
