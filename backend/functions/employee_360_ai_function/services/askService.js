@@ -18,7 +18,7 @@ class AskService {
     this.aiInteractionRepository = new AIInteractionRepository();
   }
 
-  async ask(employeeId, question, context) {
+  async ask(employeeId, question, context, history = []) {
     const classified = QuestionRouter.classify(question);
     const { reply } = classified;
     // An exact profile question belongs to the employee path even when it has
@@ -43,7 +43,7 @@ class AskService {
     // General questions: answered without any Employee 360 context, unless the
     // model hands the question back to the employee path.
     if (route === ROUTES.GENERAL) {
-      const generalResult = await this.askGenerator.answerGeneral(question);
+      const generalResult = await this.askGenerator.answerGeneral(question, history);
       if (generalResult) {
         Logger.info('Ask answered on the general path', { employeeId });
         await this._audit(employeeId, question, generalResult, context);
@@ -67,7 +67,8 @@ class AskService {
 
     const answerResult = await this.askGenerator.answerQuestion(
       canonical,
-      question
+      question,
+      history
     );
 
     await this._audit(employeeId, question, answerResult, context);

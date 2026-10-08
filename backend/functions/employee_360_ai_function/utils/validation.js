@@ -2,6 +2,11 @@
 
 const { ValidationError } = require('./errors');
 
+// Ask conversation history: accepted request size vs. the bounded window used.
+const ASK_HISTORY_MAX_ACCEPTED = 50;
+const ASK_HISTORY_TURNS_USED = 6;
+const ASK_HISTORY_TURN_MAX_CHARS = 1000;
+
 class Validation {
   static sanitizeString(input) {
     if (typeof input !== 'string') return '';
@@ -50,8 +55,39 @@ class Validation {
       throw new ValidationError("Question exceeds maximum permitted length of 500 characters");
     }
     return {
-      question: cleanQuestion
+      question: cleanQuestion,
+      history: Validation.validateAskHistory(body.history)
     };
+  }
+
+  /**
+   * Optional prior turns of the conversation. Only the most recent turns are kept,
+   * each trimmed to a bounded length. History is untrusted text used to resolve
+   * references in the current question; it never carries data or permissions.
+   */
+  static validateAskHistory(history) {
+    if (history === undefined || history === null) return [];
+    if (!Array.isArray(history)) {
+      throw new ValidationError("Property 'history' must be an array of { role, content } turns");
+    }
+    if (history.length > ASK_HISTORY_MAX_ACCEPTED) {
+      throw new ValidationError(`Property 'history' may contain at most ${ASK_HISTORY_MAX_ACCEPTED} turns`);
+    }
+
+    const turns = history.map((turn, index) => {
+      if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
+        throw new ValidationError(`history[${index}] must be an object`);
+      }
+      if (turn.role !== 'user' && turn.role !== 'assistant') {
+        throw new ValidationError(`history[${index}].role must be 'user' or 'assistant'`);
+      }
+      if (typeof turn.content !== 'string') {
+        throw new ValidationError(`history[${index}].content must be a string`);
+      }
+      return { role: turn.role, content: turn.content.trim().slice(0, ASK_HISTORY_TURN_MAX_CHARS) };
+    });
+
+    return turns.filter(turn => turn.content.length > 0).slice(-ASK_HISTORY_TURNS_USED);
   }
 }
 

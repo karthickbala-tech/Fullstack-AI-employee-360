@@ -12,10 +12,10 @@ class AskController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-const body = await HttpUtils.parseJsonBody(req);
-    const { question } = Validation.validateAskPayload(body);
+    const body = await HttpUtils.parseJsonBody(req);
+    const { question, history } = Validation.validateAskPayload(body);
 
-    const answerResponse = await this.service.ask(employeeId, question, context);
+    const answerResponse = await this.service.ask(employeeId, question, context, history);
     HttpUtils.sendSuccess(res, answerResponse, { employeeId, question });
   }
 }
