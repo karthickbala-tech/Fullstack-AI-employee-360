@@ -17,7 +17,9 @@ const ROUTES = Object.freeze({
   GENERAL: 'general',
   EMPLOYEE: 'employee',
   // Employee path answered from canonical data without AI (set by AskService).
-  DETERMINISTIC: 'deterministic'
+  DETERMINISTIC: 'deterministic',
+  // Organization-level question answered from the directory without AI (set by AskService).
+  ORGANIZATION: 'organization'
 });
 
 const CAPABILITIES_REPLY =

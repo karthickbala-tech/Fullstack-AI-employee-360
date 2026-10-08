@@ -5,6 +5,9 @@ const Employee360Service = require('./employee360Service');
 const AskGenerator = require('../ai/askGenerator');
 const QuestionRouter = require('../ai/questionRouter');
 const DeterministicAnswers = require('../ai/deterministicAnswers');
+const OrganizationAnswers = require('../ai/organizationAnswers');
+const ZohoPeopleEmployeeService = require('../connectors/zohoPeople/zohoPeopleEmployeeService');
+const Environment = require('../config/environment');
 const AIInteractionRepository = require('../repositories/aiInteractionRepository');
 const { DATA_CLASSIFICATION, CONFIDENCE_LEVELS } = require('../config/constants');
 const Logger = require('../utils/logger');
@@ -16,6 +19,24 @@ class AskService {
     this.employee360Service = new Employee360Service();
     this.askGenerator = new AskGenerator();
     this.aiInteractionRepository = new AIInteractionRepository();
+    this.directoryService = new ZohoPeopleEmployeeService();
+  }
+
+  /**
+   * Organization-level access for the caller. Without authentication
+   * (Development only) every request is unrestricted, and "me" means the
+   * employee being viewed, matching how the rest of Ask reads "my".
+   */
+  static _organizationAccess(employeeId, context) {
+    if (!Environment.isAuthenticationEnabled()) {
+      return { organizationWide: true, viewerEmployeeId: employeeId, viewerIsSubject: null };
+    }
+    const user = context?.user || {};
+    return {
+      organizationWide: user.role === 'admin' && user.scope === 'all',
+      viewerEmployeeId: user.employeeId || null,
+      viewerIsSubject: user.employeeId ? user.employeeId === employeeId : null
+    };
   }
 
   async ask(employeeId, question, context, history = []) {
@@ -72,6 +93,21 @@ class AskService {
         limitations: [],
         route
       };
+    }
+
+    // Organization-level questions (headcount, team, pay): deterministic, scoped
+    // to the caller, and never sent to AI.
+    const organizationKey = OrganizationAnswers.match(question);
+    if (organizationKey) {
+      const access = AskService._organizationAccess(employeeId, context);
+      const directoryAllowed = organizationKey === 'myReportees' ? Boolean(access.viewerEmployeeId) : access.organizationWide;
+      const directory = OrganizationAnswers.needsDirectory(organizationKey) && directoryAllowed
+        ? await timer.measure('directory', () => this.directoryService.getLiveEmployeeDirectory(context))
+        : [];
+      const organizationResult = OrganizationAnswers.answer(organizationKey, access, directory);
+      Logger.info('Ask answered on the organization path', { employeeId, questionKind: organizationKey });
+      await timer.measure('audit', () => this._audit(employeeId, question, organizationResult, context, null));
+      return { ...organizationResult, route: ROUTES.ORGANIZATION };
     }
 
     // General questions: answered without any Employee 360 context, unless the
