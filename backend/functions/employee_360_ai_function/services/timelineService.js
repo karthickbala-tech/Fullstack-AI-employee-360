@@ -13,7 +13,7 @@ class TimelineService {
 
   async getEmployeeTimeline(employeeId, context) {
     const canonical =
-      await this.employee360Service.getCanonical360(employeeId, context);
+      await this.employee360Service.getCanonical360(employeeId, context, { persist: false });
 
     // Persist deterministic timeline events generated from canonical data.
     for (const event of canonical.timeline || []) {

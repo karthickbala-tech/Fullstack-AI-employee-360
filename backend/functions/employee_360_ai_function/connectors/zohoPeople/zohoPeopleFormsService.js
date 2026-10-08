@@ -91,7 +91,8 @@ class ZohoPeopleFormsService {
 
     const lifecycle = {};
 
-    for (const form of lifecycleForms) {
+    // Independent form searches run concurrently; each records its own result or error.
+    await Promise.all(lifecycleForms.map(async form => {
       try {
         const response = await this.getFormRecords(
           form.formLinkName,
@@ -124,7 +125,7 @@ class ZohoPeopleFormsService {
           upstreamStatus: err.upstreamStatus ?? null
         };
       }
-    }
+    }));
 
     return lifecycle;
   }

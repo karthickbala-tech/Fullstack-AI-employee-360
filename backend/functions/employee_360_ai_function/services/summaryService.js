@@ -10,7 +10,7 @@ class SummaryService {
   }
 
   async getEmployeeSummary(employeeId, context) {
-    const canonical = await this.employee360Service.getCanonical360(employeeId, context);
+    const canonical = await this.employee360Service.getCanonical360(employeeId, context, { persist: false });
     const summaryResult = await this.summaryGenerator.generateSummary(canonical);
 
     return {

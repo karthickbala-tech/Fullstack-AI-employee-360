@@ -14,7 +14,13 @@ class Employee360Service {
     this.evidenceRepository = new EvidenceRepository();
   }
 
-  async getCanonical360(employeeId, context) {
+  /**
+   * Builds the canonical Employee 360 from live Zoho People data. With
+   * `persist: false` the snapshot and evidence are not written: read paths that
+   * only need the data (Ask, summary, insights, timeline) skip the Data Store
+   * writes, while GET /360 keeps the stored snapshot current.
+   */
+  async getCanonical360(employeeId, context, { persist = true } = {}) {
     Logger.info('Orchestrating Employee 360 build', {
       employeeId,
       requestId: context.requestId
@@ -37,6 +43,10 @@ class Employee360Service {
       employeeId,
       rawData
     );
+
+    if (!persist) {
+      return canonical;
+    }
 
     // 3. Persist Employee360 canonical snapshot
     try {

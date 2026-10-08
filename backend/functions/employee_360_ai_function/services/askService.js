@@ -19,6 +19,40 @@ class AskService {
   }
 
   async ask(employeeId, question, context, history = []) {
+    const timer = AskService._startTimer();
+    try {
+      const result = await this._answer(employeeId, question, context, history, timer);
+      timer.log(employeeId, result.route);
+      return result;
+    } catch (err) {
+      timer.log(employeeId, 'error');
+      throw err;
+    }
+  }
+
+  /**
+   * Collects per-stage durations for one Ask request and logs them as a single
+   * line. Only timings, route and counts are logged, never question or data content.
+   */
+  static _startTimer() {
+    const startedAt = Date.now();
+    const stages = {};
+    return {
+      async measure(stage, work) {
+        const stageStart = Date.now();
+        try {
+          return await work();
+        } finally {
+          stages[stage] = (stages[stage] || 0) + (Date.now() - stageStart);
+        }
+      },
+      log(employeeId, route) {
+        Logger.info('Ask timing', { employeeId, route, totalMs: Date.now() - startedAt, stagesMs: stages });
+      }
+    };
+  }
+
+  async _answer(employeeId, question, context, history, timer) {
     const classified = QuestionRouter.classify(question);
     const { reply } = classified;
     // An exact profile question belongs to the employee path even when it has
@@ -43,35 +77,36 @@ class AskService {
     // General questions: answered without any Employee 360 context, unless the
     // model hands the question back to the employee path.
     if (route === ROUTES.GENERAL) {
-      const generalResult = await this.askGenerator.answerGeneral(question, history);
+      const generalResult = await timer.measure('generalAi', () => this.askGenerator.answerGeneral(question, history));
       if (generalResult) {
         Logger.info('Ask answered on the general path', { employeeId });
-        await this._audit(employeeId, question, generalResult, context);
+        await timer.measure('audit', () => this._audit(employeeId, question, generalResult, context));
         return { ...generalResult, route };
       }
       Logger.info('General path handed the question to the employee path', { employeeId });
     }
 
-    const canonical = await this.employee360Service.getCanonical360(
+    const canonical = await timer.measure('employee360', () => this.employee360Service.getCanonical360(
       employeeId,
-      context
-    );
+      context,
+      { persist: false }
+    ));
 
     // Exact profile questions are answered from the canonical model with no AI call.
     const deterministicResult = DeterministicAnswers.answer(question, canonical);
     if (deterministicResult) {
       Logger.info('Ask answered deterministically from Employee 360 data', { employeeId });
-      await this._audit(employeeId, question, deterministicResult, context, null);
+      await timer.measure('audit', () => this._audit(employeeId, question, deterministicResult, context, null));
       return { ...deterministicResult, route: ROUTES.DETERMINISTIC };
     }
 
-    const answerResult = await this.askGenerator.answerQuestion(
+    const answerResult = await timer.measure('employeeAi', () => this.askGenerator.answerQuestion(
       canonical,
       question,
       history
-    );
+    ));
 
-    await this._audit(employeeId, question, answerResult, context);
+    await timer.measure('audit', () => this._audit(employeeId, question, answerResult, context));
 
     return { ...answerResult, route: ROUTES.EMPLOYEE };
   }

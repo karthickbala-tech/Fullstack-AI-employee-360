@@ -61,6 +61,7 @@ class GeminiProvider extends AIProvider {
 
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
 
+      const startedAt = Date.now();
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -82,10 +83,11 @@ class GeminiProvider extends AIProvider {
 
         const result = await response.json();
 
-        // DIAGNOSTIC (temporary): one line per billed Gemini call so Catalyst logs show
-        // real call frequency and token usage. No prompt/response content is logged.
-        Logger.info('DIAGNOSTIC Gemini call completed', {
+        // One line per billed Gemini call: model, latency and token usage.
+        // No prompt or response content is logged.
+        Logger.info('Gemini call completed', {
           model: modelName,
+          durationMs: Date.now() - startedAt,
           finishReason: result.candidates?.[0]?.finishReason || null,
           usage: result.usageMetadata || null
         });

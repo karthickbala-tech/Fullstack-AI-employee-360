@@ -235,40 +235,49 @@ class ZohoPeopleEmployeeService {
 
     const rawRecord = match.fields;
     const zohoEmpId = normalizeId(rawRecord.EmployeeID) || cleanId;
-    let attendanceData = null;
-    let leaveData = null;
-    let lifecycleData = null;
 
+    // The three lookups are independent, so they run concurrently. Each stays
+    // best-effort: a failure leaves its domain null, exactly as before.
     // Attendance and leave remain best-effort until their APIs are verified (Phase 2).
-    try {
-      const attUrl = `${endpoints.attendanceSummary}?empId=${encodeURIComponent(zohoEmpId)}`;
-      const attRes = await this.client.request(attUrl, { context, dataCenter });
-      attendanceData = attRes?.response?.result || attRes?.result || null;
-    } catch (attErr) {
-      Logger.info('Attendance real-time lookup skipped', { code: attErr.code, zohoCode: attErr.zohoCode ?? null });
-    }
-
-    try {
-      const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(zohoEmpId)}`;
-      const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });
-      leaveData = leaveRes?.response?.result || leaveRes?.result || null;
-    } catch (leaveErr) {
-      Logger.info('Leave real-time lookup skipped', { code: leaveErr.code, zohoCode: leaveErr.zohoCode ?? null });
-    }
-
-    try {
-      lifecycleData = await this.formsService.getLifecycleRecords(cleanId, context);
-      Logger.info('Lifecycle real-time lookup completed', {
-        employeeId: cleanId,
-        forms: Object.keys(lifecycleData || {})
-      });
-    } catch (lifecycleErr) {
-      Logger.info('Lifecycle real-time lookup skipped', {
-        employeeId: cleanId,
-        code: lifecycleErr.code,
-        zohoCode: lifecycleErr.zohoCode ?? null
-      });
-    }
+    const [attendanceData, leaveData, lifecycleData] = await Promise.all([
+      (async () => {
+        try {
+          const attUrl = `${endpoints.attendanceSummary}?empId=${encodeURIComponent(zohoEmpId)}`;
+          const attRes = await this.client.request(attUrl, { context, dataCenter });
+          return attRes?.response?.result || attRes?.result || null;
+        } catch (attErr) {
+          Logger.info('Attendance real-time lookup skipped', { code: attErr.code, zohoCode: attErr.zohoCode ?? null });
+          return null;
+        }
+      })(),
+      (async () => {
+        try {
+          const leaveUrl = `${endpoints.leaveBalances}?userId=${encodeURIComponent(zohoEmpId)}`;
+          const leaveRes = await this.client.request(leaveUrl, { context, dataCenter });
+          return leaveRes?.response?.result || leaveRes?.result || null;
+        } catch (leaveErr) {
+          Logger.info('Leave real-time lookup skipped', { code: leaveErr.code, zohoCode: leaveErr.zohoCode ?? null });
+          return null;
+        }
+      })(),
+      (async () => {
+        try {
+          const lifecycle = await this.formsService.getLifecycleRecords(cleanId, context);
+          Logger.info('Lifecycle real-time lookup completed', {
+            employeeId: cleanId,
+            forms: Object.keys(lifecycle || {})
+          });
+          return lifecycle;
+        } catch (lifecycleErr) {
+          Logger.info('Lifecycle real-time lookup skipped', {
+            employeeId: cleanId,
+            code: lifecycleErr.code,
+            zohoCode: lifecycleErr.zohoCode ?? null
+          });
+          return null;
+        }
+      })()
+    ]);
 
     return {
       source: 'zoho_people',
