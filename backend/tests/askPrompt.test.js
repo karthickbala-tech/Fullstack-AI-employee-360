@@ -114,3 +114,8 @@ test('GeminiProvider sends systemInstruction and responseMimeType when given', a
   assert.equal(body.systemInstruction, undefined);
   assert.equal(body.generationConfig.responseMimeType, undefined);
 });
+
+test('the shared policy forbids inferring gender from names', () => {
+  const AIGuardrails = fn('ai/aiGuardrails');
+  assert.match(AIGuardrails.getSystemPolicy(), /Never infer gender from a name/);
+});
