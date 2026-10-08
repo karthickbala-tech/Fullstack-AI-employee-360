@@ -130,7 +130,7 @@ test('a general question is answered without building Employee 360 or sending em
 
 test('a handed-back general question falls through to the employee path', async t => {
   const { service, provider, calls } = makeService(t, 'ROUTE_EMPLOYEE');
-  const result = await service.ask('HRM4', 'How long have I been here?', {});
+  const result = await service.ask('HRM4', 'Where do I usually sit?', {});
   assert.equal(result.route, 'employee');
   assert.equal(calls.canonical, 1);
   assert.equal(provider.prompts.length, 2);

@@ -15,7 +15,9 @@
 const ROUTES = Object.freeze({
   CONVERSATION: 'conversation',
   GENERAL: 'general',
-  EMPLOYEE: 'employee'
+  EMPLOYEE: 'employee',
+  // Employee path answered from canonical data without AI (set by AskService).
+  DETERMINISTIC: 'deterministic'
 });
 
 const CAPABILITIES_REPLY =

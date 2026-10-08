@@ -51,6 +51,51 @@ class EvidenceService {
         canonical.deterministicMetrics.tenure.formatted;
     }
 
+    // Employee form fields copied verbatim into the canonical model; evidence
+    // exists only when Zoho People actually supplied the value.
+    const employeeFormFields = [
+      {
+        domain: 'organisation',
+        field: 'department',
+        value: canonical.organisation?.department,
+        notes: 'Department directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'employment',
+        field: 'jobTitle',
+        value: canonical.employment?.jobTitle,
+        notes: 'Designation directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'employment',
+        field: 'employmentStatus',
+        value: canonical.employment?.employmentStatus,
+        notes: 'Employee status directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'organisation',
+        field: 'reportingManagerName',
+        value: canonical.organisation?.reportingManagerName,
+        notes: 'Reporting To value directly obtained from Zoho People employee record.'
+      }
+    ];
+
+    for (const item of employeeFormFields) {
+      if (!item.value) continue;
+
+      evidenceList.push(new EvidenceItem({
+        domain: item.domain,
+        field: item.field,
+        source: 'Zoho People (Employee Form)',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: item.notes
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = item.value;
+    }
+
     if (
       canonical.performance?.overallRating !== null &&
       canonical.performance?.overallRating !== undefined
