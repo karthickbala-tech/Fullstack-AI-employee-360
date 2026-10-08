@@ -12,6 +12,7 @@ const InsightsController = require('../controllers/insightsController');
 const TimelineController = require('../controllers/timelineController');
 const AskController = require('../controllers/askController');
 const ZohoPeopleController = require('../controllers/zohoPeopleController');
+const MeController = require('../controllers/meController');
 
 const employee360Controller = new Employee360Controller();
 const summaryController = new SummaryController();
@@ -19,8 +20,15 @@ const insightsController = new InsightsController();
 const timelineController = new TimelineController();
 const askController = new AskController();
 const zohoPeopleController = new ZohoPeopleController();
+const meController = new MeController();
 
 const routes = [
+  {
+    method: 'GET',
+    pattern: /^\/v1\/me\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => meController.handle(req, res, params, ctx)
+  },
   {
     method: 'GET',
     pattern: /^\/v1\/zoho\/status\/?$/,

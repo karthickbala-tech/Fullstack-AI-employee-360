@@ -201,13 +201,16 @@ class DeterministicAnswers {
    * to the AI path. A factual answer whose evidence is not present in
    * canonical.evidence is never returned.
    */
-  static answer(question, canonical) {
+  static answer(question, canonical, { viewerIsSubject = null } = {}) {
     if (!canonical || canonical.isLiveZohoData !== true) return null;
 
     const matched = DeterministicAnswers.match(question);
     if (!matched) return null;
 
-    const result = answerFor(matched.key, canonical, matched.firstPerson);
+    // "my" only reads as "your" when the signed-in viewer is this employee (or,
+    // without authentication, when nothing says otherwise).
+    const firstPerson = matched.firstPerson && viewerIsSubject !== false;
+    const result = answerFor(matched.key, canonical, firstPerson);
     if (!result) return null;
 
     if (result.type !== DATA_CLASSIFICATION.UNKNOWN) {

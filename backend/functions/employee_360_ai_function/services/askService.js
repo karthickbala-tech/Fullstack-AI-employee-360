@@ -93,7 +93,8 @@ class AskService {
     ));
 
     // Exact profile questions are answered from the canonical model with no AI call.
-    const deterministicResult = DeterministicAnswers.answer(question, canonical);
+    const viewerIsSubject = context?.user?.employeeId ? context.user.employeeId === employeeId : null;
+    const deterministicResult = DeterministicAnswers.answer(question, canonical, { viewerIsSubject });
     if (deterministicResult) {
       Logger.info('Ask answered deterministically from Employee 360 data', { employeeId });
       await timer.measure('audit', () => this._audit(employeeId, question, deterministicResult, context, null));

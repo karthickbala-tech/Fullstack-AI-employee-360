@@ -23,14 +23,13 @@ class ZohoPeopleController {
   }
 
   async getStatus(req, res, params, context) {
-    // Authentication/authorization temporarily disabled for Development.
-    // Restore AuthorizationBoundary.requireAdmin(context) when authentication is re-enabled.
+    AuthorizationBoundary.authorizeAdmin(context);
     const verification = await this.client.verifyConnection(context);
     HttpUtils.sendSuccess(res, verification);
   }
 
   async getForms(req, res, params, context) {
-    
+    AuthorizationBoundary.authorizeAdmin(context);
     const forms = await this.formsService.listForms(context);
     HttpUtils.sendSuccess(res, {
       forms,
@@ -39,7 +38,7 @@ class ZohoPeopleController {
   }
 
   async getFormComponents(req, res, params, context) {
-    
+    AuthorizationBoundary.authorizeAdmin(context);
     const formLinkName = Validation.validateFormLinkName(params.formLinkName);
     const components = await this.formsService.getFormComponents(formLinkName, context);
     HttpUtils.sendSuccess(res, {
@@ -50,7 +49,7 @@ class ZohoPeopleController {
   }
 
   async getFormRecords(req, res, params, context) {
-    
+    AuthorizationBoundary.authorizeAdmin(context);
     const formLinkName = Validation.validateFormLinkName(params.formLinkName);
     const records = await this.formsService.getFormRecords(formLinkName, context);
     HttpUtils.sendSuccess(res, {
@@ -61,7 +60,7 @@ class ZohoPeopleController {
   }
 
   async getEmployees(req, res, params, context) {
-    
+    AuthorizationBoundary.authorizeAdmin(context);
     const list = await this.employeeService.getLiveEmployeeDirectory(context);
 
     for (const employee of list) {

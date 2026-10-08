@@ -12,6 +12,7 @@ class AskController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
+    AuthorizationBoundary.authorizeEmployee(context, employeeId);
     const body = await HttpUtils.parseJsonBody(req);
     const { question, history } = Validation.validateAskPayload(body);
 

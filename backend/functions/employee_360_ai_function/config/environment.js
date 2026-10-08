@@ -3,6 +3,10 @@
 const { ERROR_CODES } = require('./constants');
 const { AppError } = require('../utils/errors');
 
+// Development Web Tab testing runs without Catalyst sign-in. Set to true before
+// production (see Environment.isAuthenticationEnabled).
+const AUTHENTICATION_ENABLED = false;
+
 class Environment {
   static getServiceConfig() {
     return {
@@ -41,6 +45,16 @@ class Environment {
         orgstructure: 'read'
       }
     };
+  }
+
+  /**
+   * Whether requests must come from an authenticated Catalyst project user.
+   * Disabled only for Development Web Tab testing, where every request behaves as
+   * unrestricted. MUST be true before any production deployment; when true, every
+   * non-public route enforces the caller's role and employee scope.
+   */
+  static isAuthenticationEnabled() {
+    return AUTHENTICATION_ENABLED;
   }
 
   static getGeminiApiKey() {

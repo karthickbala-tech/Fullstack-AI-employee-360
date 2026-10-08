@@ -4,6 +4,7 @@ const ZohoPeopleEmployeeService = require('../connectors/zohoPeople/zohoPeopleEm
 const Employee360Builder = require('../intelligence/employee360Builder');
 const Employee360Repository = require('../repositories/employee360Repository');
 const EvidenceRepository = require('../repositories/evidenceRepository');
+const AuthorizationBoundary = require('../middleware/authorization');
 const Logger = require('../utils/logger');
 const { NotFoundError } = require('../utils/errors');
 
@@ -45,7 +46,7 @@ class Employee360Service {
     );
 
     if (!persist) {
-      return canonical;
+      return AuthorizationBoundary.filterAllowedFields(context, canonical);
     }
 
     // 3. Persist Employee360 canonical snapshot
@@ -99,7 +100,9 @@ class Employee360Service {
       });
     }
 
-    return canonical;
+    // Consumers (API, summary, insights, Ask and its AI context) only ever see
+    // the permitted domains; the stored snapshot keeps the full source record.
+    return AuthorizationBoundary.filterAllowedFields(context, canonical);
   }
 }
 

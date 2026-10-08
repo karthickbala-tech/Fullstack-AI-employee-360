@@ -4,6 +4,7 @@ const RequestContext = require('./middleware/requestContext');
 const AuthorizationBoundary = require('./middleware/authorization');
 const Router = require('./routes/index');
 const HttpUtils = require('./utils/http');
+const Environment = require('./config/environment');
 const { ValidationError } = require('./utils/errors');
 
 /**
@@ -35,8 +36,11 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Authentication temporarily disabled for Development.
-    // Restore AuthorizationBoundary.authenticate() when authentication is re-enabled.
+    // 1. Establish the caller before any routing. Disabled only for Development
+    //    Web Tab testing (Environment.isAuthenticationEnabled); must be on in production.
+    if (Environment.isAuthenticationEnabled() && !Router.isPublicRequest(req)) {
+      await AuthorizationBoundary.authenticate(req, context);
+    }
 
     // 2. Delegate routing to route table
     await Router.dispatch(req, res, context);

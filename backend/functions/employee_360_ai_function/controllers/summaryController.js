@@ -12,7 +12,8 @@ class SummaryController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-const data = await this.service.getEmployeeSummary(employeeId, context);
+    AuthorizationBoundary.authorizeEmployee(context, employeeId);
+    const data = await this.service.getEmployeeSummary(employeeId, context);
     HttpUtils.sendSuccess(res, data, { employeeId });
   }
 }

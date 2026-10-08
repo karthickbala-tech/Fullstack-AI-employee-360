@@ -24,8 +24,7 @@ function stubCatalyst(t, getCurrentUser) {
 function stubDirectory(t, directory) {
   const original = AuthorizationBoundary._getEmployeeService;
   AuthorizationBoundary._getEmployeeService = () => ({
-    findEmployeesByEmail: async email =>
-      directory.filter(e => (e.email || '').toLowerCase() === email.toLowerCase())
+    getLiveEmployeeDirectory: async () => directory
   });
   t.after(() => { AuthorizationBoundary._getEmployeeService = original; });
 }

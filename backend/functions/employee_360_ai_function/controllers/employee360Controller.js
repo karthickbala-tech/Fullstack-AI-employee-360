@@ -12,10 +12,10 @@ class Employee360Controller {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-const canonical = await this.service.getCanonical360(employeeId, context);
-    const filtered = canonical;
+    AuthorizationBoundary.authorizeEmployee(context, employeeId);
+    const canonical = await this.service.getCanonical360(employeeId, context);
 
-    HttpUtils.sendSuccess(res, filtered, { employeeId });
+    HttpUtils.sendSuccess(res, canonical, { employeeId });
   }
 }
 
