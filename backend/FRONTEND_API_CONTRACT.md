@@ -435,7 +435,10 @@ facts, evidence or permissions, and it is not stored.
 `route` (additive) says how the answer was produced:
 
 - `conversation`: greeting or small talk; no employee data, no AI.
-- `general`: general question answered by AI with no employee data.
+- `general`: message with no employee topic: friendly small talk is
+  answered briefly; any request for outside information is politely
+  declined (the assistant never supplies outside knowledge). No employee
+  data is used.
 - `deterministic`: exact profile question answered from Employee 360 data, no AI.
 - `organization`: organization-level question (headcount, team, pay)
   answered from the directory within the caller's scope, no AI.

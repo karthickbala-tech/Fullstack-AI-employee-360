@@ -25,7 +25,7 @@ const ROUTES = Object.freeze({
 const CAPABILITIES_REPLY =
   "I'm the Employee 360 assistant. I can answer questions about this employee's verified " +
   'Zoho People record, such as role, department, tenure, attendance, leave and lifecycle events, ' +
-  "and I'll say clearly when something isn't recorded. I can also help with general questions.";
+  "and I'll say clearly when something isn't recorded.";
 
 // Each pattern must match the whole normalized message, so "hi, what is my
 // attendance?" is never mistaken for a plain greeting.

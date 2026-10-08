@@ -56,17 +56,43 @@ function stubProvider(reply) {
   };
 }
 
-test('general answers carry no Employee 360 classification', async t => {
+const OUT_OF_SCOPE = /^Sorry, I can only help with Employee 360 questions/;
+
+test('friendly small talk is answered and carries no Employee 360 classification', async t => {
   silenceLogs(t);
-  const generator = new AskGenerator(stubProvider('Soak the rice, then layer it with the masala.'));
-  const result = await generator.answerGeneral('How do I make biryani?');
+  const generator = new AskGenerator(stubProvider("I'm doing great - thanks for asking! What would you like to know?"));
+  const result = await generator.answerGeneral('how are you maple?');
   assert.deepEqual(result, {
-    answer: 'Soak the rice, then layer it with the masala.',
+    answer: "I'm doing great - thanks for asking! What would you like to know?",
     type: 'Unknown',
     confidence: 'unknown',
     evidence: [],
     limitations: []
   });
+});
+
+test('outside-knowledge requests are declined, never answered', async t => {
+  silenceLogs(t);
+  const declined = await new AskGenerator(stubProvider('OUT_OF_SCOPE')).answerGeneral('How do I make biryani?');
+  assert.match(declined.answer, OUT_OF_SCOPE);
+
+  // Even if the model ignores the instruction, an informational answer is replaced.
+  const recipe = '*   **Marinate:** Mix chicken with yogurt.\n*   **Cook Rice:** Boil basmati rice.';
+  const guarded = await new AskGenerator(stubProvider(recipe)).answerGeneral('How do I make biryani?');
+  assert.match(guarded.answer, OUT_OF_SCOPE);
+  assert.doesNotMatch(guarded.answer, /chicken|rice/i);
+
+  const long = 'Recursion is a technique where a function calls itself. '.repeat(6);
+  assert.match((await new AskGenerator(stubProvider(long)).answerGeneral('Explain recursion')).answer, OUT_OF_SCOPE);
+});
+
+test('the out-of-scope prompt forbids outside knowledge', async t => {
+  silenceLogs(t);
+  const calls = [];
+  const generator = new AskGenerator({ model: 'stub', generateCompletion: async (prompt, options) => { calls.push(options); return 'OUT_OF_SCOPE'; } });
+  await generator.answerGeneral('What is the capital of France?');
+  assert.match(calls[0].systemInstruction, /never provide outside knowledge/);
+  assert.match(calls[0].systemInstruction, /OUT_OF_SCOPE/);
 });
 
 test('general path hands back to the employee path on the handoff token', async t => {
@@ -75,11 +101,11 @@ test('general path hands back to the employee path on the handoff token', async 
   assert.equal(await generator.answerGeneral('How long have I been here?'), null);
 });
 
-test('general path failure returns a short retry message instead of an error', async t => {
+test('a failed small-talk call falls back to the scoped reply instead of an error', async t => {
   silenceLogs(t);
   const generator = new AskGenerator(stubProvider(new Error('timeout')));
   const result = await generator.answerGeneral('Explain recursion simply');
-  assert.match(result.answer, /try again/);
+  assert.match(result.answer, OUT_OF_SCOPE);
   assert.deepEqual(result.evidence, []);
 });
 
