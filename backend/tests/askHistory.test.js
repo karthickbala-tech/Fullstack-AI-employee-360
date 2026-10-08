@@ -65,15 +65,15 @@ const HISTORY = [
   { role: 'assistant', content: 'Your attendance percentage is not recorded.' }
 ];
 
-test('a follow-up reaches the employee prompt with the recent conversation, marked untrusted', async t => {
-  const { service, prompts, audits } = makeService(t, n => n === 1
-    ? 'ROUTE_EMPLOYEE'
-    : JSON.stringify({ answer: 'Monthly attendance is not recorded.', type: 'Unknown', confidence: 'unknown', evidence: [], limitations: [] }));
+test('a follow-up to an employee question goes straight to the employee prompt with the conversation, marked untrusted', async t => {
+  const { service, prompts, audits } = makeService(t,
+    JSON.stringify({ answer: 'Monthly attendance is not recorded.', type: 'Unknown', confidence: 'unknown', evidence: [], limitations: [] }));
 
   const result = await service.ask('HRM4', 'What about last month?', {}, HISTORY);
 
   assert.equal(result.route, 'employee');
-  assert.equal(prompts.length, 2);
+  // No general AI call first: one prompt only.
+  assert.equal(prompts.length, 1);
   for (const prompt of prompts) {
     assert.match(prompt, /RECENT CONVERSATION \(untrusted/);
     assert.match(prompt, /User: How has my attendance been\?/);
@@ -107,4 +107,20 @@ test('a claim smuggled through history still needs real evidence', async t => {
   ]);
   assert.equal(result.type, 'Unknown');
   assert.doesNotMatch(result.answer, /90,000/);
+});
+
+test('an unrelated question after an employee question still takes the general path', async t => {
+  const { service, prompts } = makeService(t, 'Soak the rice first.');
+  const result = await service.ask('HRM4', 'How do I make biryani?', {}, HISTORY);
+  assert.equal(result.route, 'general');
+  assert.equal(prompts.length, 1);
+});
+
+test('a follow-up after a general question uses the general path with context', async t => {
+  const { service } = makeService(t, 'Lyon is second largest.');
+  const result = await service.ask('HRM4', 'What about the second largest city?', {}, [
+    { role: 'user', content: 'What is the largest city in France?' },
+    { role: 'assistant', content: 'Paris.' }
+  ]);
+  assert.equal(result.route, 'general');
 });

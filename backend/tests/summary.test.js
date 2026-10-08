@@ -62,7 +62,7 @@ test('deterministic summary is one bolded paragraph built only from recorded fie
   const result = await generator.generateSummary(canonical);
   assert.equal(result.isAiGenerated, false);
   assert.doesNotMatch(result.summary, /\n/);
-  assert.match(result.summary, /^\*\*Priya Nair\*\* is a \*\*Assistant Manager\*\* in \*\*Information Technology\*\* with \*\*.+\*\* of tenure \(joined 11-Sep-2020\)\./);
+  assert.match(result.summary, /^\*\*Priya Nair\*\* is an \*\*Assistant Manager\*\* in \*\*Information Technology\*\* with \*\*.+\*\* of tenure \(joined 11-Sep-2020\)\./);
   assert.match(result.summary, /Employment status is \*\*Active\*\*\./);
   assert.match(result.summary, /Not recorded in Zoho People: attendance, leave utilization\./);
 });

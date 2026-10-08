@@ -78,7 +78,14 @@ class AskService {
     const { reply } = classified;
     // An exact profile question belongs to the employee path even when it has
     // no strong HR keyword ("when did I join?"), so it never costs a general AI call.
-    const route = classified.route === ROUTES.GENERAL && DeterministicAnswers.match(question)
+    // A short follow-up to an employee question ("what about last month?") also
+    // goes straight to the employee path instead of costing a general AI call first.
+    const lastUserTurn = [...history].reverse().find(turn => turn.role === 'user');
+    const followsEmployeeQuestion = Boolean(lastUserTurn) &&
+      QuestionRouter.isFollowUp(question) &&
+      QuestionRouter.classify(lastUserTurn.content).route === ROUTES.EMPLOYEE;
+    const route = classified.route === ROUTES.GENERAL &&
+      (DeterministicAnswers.match(question) || followsEmployeeQuestion)
       ? ROUTES.EMPLOYEE
       : classified.route;
 

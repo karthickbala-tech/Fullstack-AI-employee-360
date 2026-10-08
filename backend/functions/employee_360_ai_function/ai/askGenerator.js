@@ -13,6 +13,11 @@ const GENERAL_HANDOFF_TOKEN = 'ROUTE_EMPLOYEE';
 // default first candidate took ~8 s to return 503 under load.
 const ASK_PREFERRED_MODEL = 'gemini-3.1-flash-lite';
 
+// One Ask request may make a general call and then an employee call; together
+// with the Zoho build they must finish inside the Web Tab's 20 s request timeout.
+const GENERAL_TIME_BUDGET_MS = 6000;
+const EMPLOYEE_TIME_BUDGET_MS = 12000;
+
 class AskGenerator {
   constructor(provider = null) {
     // Ask is latency-sensitive with a small, structured task, so it prefers the
@@ -85,6 +90,7 @@ class AskGenerator {
       const completion = await this.provider.generateCompletion(prompt, {
         temperature: 0.4,
         maxOutputTokens: 800,
+        timeBudgetMs: GENERAL_TIME_BUDGET_MS,
         systemInstruction
       });
       answer = typeof completion === 'string' ? completion.trim() : '';
@@ -151,6 +157,7 @@ class AskGenerator {
     try {
       const completion = await this.provider.generateCompletion(prompt, {
         temperature: 0.1,
+        timeBudgetMs: EMPLOYEE_TIME_BUDGET_MS,
         systemInstruction,
         responseMimeType: 'application/json'
       });

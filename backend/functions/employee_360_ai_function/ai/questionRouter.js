@@ -63,6 +63,9 @@ const CONVERSATION_REPLIES = [
 const EMPLOYEE_SIGNAL =
   /\b(my|mine|myself|our|ours|employee|employees|staff|colleague|colleagues|team|teams|reportee|reportees|manager|managers|reporting|reports to|hr|human resources|attendance|absent|absence|absences|late days|punch|check-in|checkin|leave|leaves|time off|sick days|department|departments|designation|job title|role|salary|salaries|payroll|payslip|compensation|ctc|bonus|increment|appraisal|performance|rating|ratings|goal|goals|kpi|kpis|okr|okrs|skill|skills|training|learning|certification|tenure|joined|joining|date of joining|hired|resign|resigned|resignation|termination|terminated|exit interview|notice period|probation|confirmation|promotion|promoted|transfer|work location|shift|profile|insight|insights|timeline|evidence|employment|organisation|organization|headcount|workforce|zoho)\b/;
 
+// Short continuations that lean on the previous question for their subject.
+const FOLLOW_UP = /^((what|how) about|and|also|same (for|with)|what of|(last|this|next|previous) (month|week|year|quarter))\b/;
+
 function normalize(question) {
   return String(question || '')
     .toLowerCase()
@@ -75,6 +78,14 @@ function normalize(question) {
 class QuestionRouter {
   static get ROUTES() {
     return ROUTES;
+  }
+
+  /**
+   * Whether the question is an elliptical follow-up ("what about last month?",
+   * "and her manager?") that only makes sense with the previous turn.
+   */
+  static isFollowUp(question) {
+    return FOLLOW_UP.test(normalize(question));
   }
 
   /**

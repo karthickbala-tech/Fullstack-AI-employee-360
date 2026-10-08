@@ -50,8 +50,9 @@ class SummaryGenerator {
     const missing = [];
 
     let profile = `**${name}**`;
-    if (known(role) && known(dept)) profile += ` is a **${role}** in **${dept}**`;
-    else if (known(role)) profile += ` is a **${role}**`;
+    const article = known(role) && /^[aeiou]/i.test(role) ? 'an' : 'a';
+    if (known(role) && known(dept)) profile += ` is ${article} **${role}** in **${dept}**`;
+    else if (known(role)) profile += ` is ${article} **${role}**`;
     else if (known(dept)) profile += ` works in **${dept}**`;
     else profile += ' is recorded in Zoho People';
     if (!known(role)) missing.push('designation');
