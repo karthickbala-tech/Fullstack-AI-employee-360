@@ -405,9 +405,19 @@ POST /v1/employees/HRM2/ask
 Content-Type: application/json
 
 {
-  "question": "What are this employee's main development areas?"
+  "question": "What about last month?",
+  "history": [
+    { "role": "user", "content": "How has my attendance been?" },
+    { "role": "assistant", "content": "Your attendance percentage is not recorded." }
+  ]
 }
 ```
+
+`history` is optional. It holds earlier turns of the same conversation
+(`role` is `user` or `assistant`, `content` a string). At most 50 turns
+are accepted; only the last 6 non-empty turns (1000 characters each) are
+used. History only helps resolve follow-up references; it never supplies
+facts, evidence or permissions, and it is not stored.
 
 ## Expected conceptual response
 
@@ -417,9 +427,33 @@ Content-Type: application/json
   "type": "...",
   "confidence": "...",
   "evidence": [],
-  "limitations": []
+  "limitations": [],
+  "route": "employee"
 }
 ```
+
+`route` (additive) says how the answer was produced:
+
+- `conversation`: greeting or small talk; no employee data, no AI.
+- `general`: general question answered by AI with no employee data.
+- `deterministic`: exact profile question answered from Employee 360 data, no AI.
+- `organization`: organization-level question (headcount, team, pay)
+  answered from the directory within the caller's scope, no AI.
+- `employee`: AI answer grounded in the employee's Employee 360 context.
+
+Non-employee routes carry `type: "Unknown"`, `confidence: "unknown"` and
+no evidence, because they make no claim about the employee.
+Organization answers cite `directory.*` references (the live Zoho People
+employee directory fields used).
+
+## GET `/v1/me`
+
+Returns the caller's access: `authenticationEnabled`, `role`
+(`admin`, `manager`, `employee`, or `development` while authentication
+is disabled), `scope` (`all`, `team`, `self`), `employeeId` and
+`allowedEmployeeIds` (`null` when unrestricted). Clients may use it to
+show only what the backend allows; the backend still enforces every
+request.
 
 The exact final response schema must be verified from the running
 backend before the frontend treats every field as mandatory.
