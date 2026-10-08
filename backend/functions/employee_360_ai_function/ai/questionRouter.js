@@ -27,19 +27,23 @@ const CAPABILITIES_REPLY =
   'Zoho People record, such as role, department, tenure, attendance, leave and lifecycle events, ' +
   "and I'll say clearly when something isn't recorded.";
 
-// Each pattern must match the whole normalized message, so "hi, what is my
-// attendance?" is never mistaken for a plain greeting.
+// Each pattern must match from the start of the normalized message. What follows
+// the phrase may only be a short trailer (see SMALL_TALK_TRAILER) when the entry
+// allows it, so "hi, what is my attendance?" is never mistaken for a greeting.
 const CONVERSATION_REPLIES = [
   {
-    pattern: /^(hi|hello|hey|hiya|hey there|hi there|hello there|greetings|namaste|vanakkam|good (morning|afternoon|evening))( team| all| everyone)?$/,
+    pattern: /^(hey there|hi there|hello there|good (morning|afternoon|evening)|hello|hiya|hey|hi|greetings|namaste|vanakkam)( team| all| everyone)?/,
+    allowTrailer: true,
     reply: 'Hi! How can I help you today?'
   },
   {
-    pattern: /^(how are you|how are you doing|how is it going|how's it going|hows it going|how do you do)$/,
+    pattern: /^(how are you doing|how are you|how is it going|how's it going|hows it going|how do you do)/,
+    allowTrailer: true,
     reply: "I'm doing well, thanks for asking. What would you like to know?"
   },
   {
-    pattern: /^(thanks|thank you|thank you so much|thanks a lot|thanks so much|many thanks|ty|cheers)$/,
+    pattern: /^(thank you so much|thank you|thanks a lot|thanks so much|many thanks|thanks|ty|cheers)/,
+    allowTrailer: true,
     reply: "You're welcome! Let me know if there's anything else."
   },
   {
@@ -47,7 +51,8 @@ const CONVERSATION_REPLIES = [
     reply: 'Glad that helps. Anything else you would like to check?'
   },
   {
-    pattern: /^(bye|goodbye|good bye|see you|see ya|see you later|good night)$/,
+    pattern: /^(see you later|good night|good bye|goodbye|see you|see ya|bye)/,
+    allowTrailer: true,
     reply: 'Goodbye! Come back any time.'
   },
   {
@@ -55,6 +60,10 @@ const CONVERSATION_REPLIES = [
     reply: CAPABILITIES_REPLY
   }
 ];
+
+// Up to two extra words after a small-talk phrase ("how are you maple",
+// "thanks a lot, maple") still count, unless they carry an employee/HR signal.
+const SMALL_TALK_TRAILER = /^( [a-z']+){0,2}$/;
 
 // Strong employee/HR signals send the question straight to the employee path.
 // Weaker hints ("I", "he", "here") are left to the general path, whose prompt
@@ -98,8 +107,13 @@ class QuestionRouter {
       return { route: ROUTES.EMPLOYEE };
     }
 
-    for (const { pattern, reply } of CONVERSATION_REPLIES) {
-      if (pattern.test(text)) {
+    for (const { pattern, reply, allowTrailer } of CONVERSATION_REPLIES) {
+      const match = text.match(pattern);
+      if (!match) continue;
+      const trailer = text.slice(match[0].length);
+      const smallTalk = trailer === '' ||
+        (allowTrailer && SMALL_TALK_TRAILER.test(trailer) && !EMPLOYEE_SIGNAL.test(trailer));
+      if (smallTalk) {
         return { route: ROUTES.CONVERSATION, reply };
       }
     }

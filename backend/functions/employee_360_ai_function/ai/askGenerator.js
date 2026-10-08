@@ -15,6 +15,10 @@ const OUT_OF_SCOPE_REPLY =
   "Sorry, I can only help with Employee 360 questions, such as this employee's role, department, " +
   'tenure, employment status, reporting manager, attendance or leave.';
 
+const SCOPE_INTRO_REPLY =
+  "I'm here to help with Employee 360 questions, such as this employee's role, department, " +
+  'tenure, employment status, reporting manager, attendance or leave.';
+
 // Small-talk replies are one or two short sentences.
 const SMALL_TALK_MAX_CHARS = 240;
 
@@ -112,8 +116,14 @@ class AskGenerator {
       return null;
     }
 
+    // No reply at all (timeout or outage): the message could have been small talk,
+    // so answer neutrally rather than with an apology for being out of scope.
+    let reply = OUT_OF_SCOPE_REPLY;
+    if (!answer) reply = SCOPE_INTRO_REPLY;
+    else if (AskGenerator.isSmallTalkReply(answer)) reply = answer;
+
     return {
-      answer: AskGenerator.isSmallTalkReply(answer) ? answer : OUT_OF_SCOPE_REPLY,
+      answer: reply,
       type: DATA_CLASSIFICATION.UNKNOWN,
       confidence: CONFIDENCE_LEVELS.UNKNOWN,
       evidence: [],

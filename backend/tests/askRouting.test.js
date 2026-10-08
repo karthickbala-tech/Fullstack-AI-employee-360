@@ -101,12 +101,25 @@ test('general path hands back to the employee path on the handoff token', async 
   assert.equal(await generator.answerGeneral('How long have I been here?'), null);
 });
 
-test('a failed small-talk call falls back to the scoped reply instead of an error', async t => {
+test('a failed small-talk call falls back to a neutral scope reply instead of an error', async t => {
   silenceLogs(t);
   const generator = new AskGenerator(stubProvider(new Error('timeout')));
   const result = await generator.answerGeneral('Explain recursion simply');
-  assert.match(result.answer, OUT_OF_SCOPE);
+  assert.match(result.answer, /^I'm here to help with Employee 360 questions/);
   assert.deepEqual(result.evidence, []);
+});
+
+test('greetings and small talk with a short trailer are answered instantly', () => {
+  for (const q of ['how are you maple?', 'Thanks a lot, maple!', 'hi maple', 'Good morning everyone', 'bye for now', 'hello there friend']) {
+    assert.equal(QuestionRouter.classify(q).route, ROUTES.CONVERSATION, q);
+  }
+});
+
+test('a trailer with an HR word, or a longer trailer, is not small talk', () => {
+  assert.equal(QuestionRouter.classify('hi what is my attendance').route, ROUTES.EMPLOYEE);
+  assert.equal(QuestionRouter.classify('thanks, and my leave balance?').route, ROUTES.EMPLOYEE);
+  assert.equal(QuestionRouter.classify('hello can you explain recursion').route, ROUTES.GENERAL);
+  assert.equal(QuestionRouter.classify('history of india').route, ROUTES.GENERAL);
 });
 
 function makeService(t, providerReply) {
