@@ -36,6 +36,21 @@ class AskGenerator {
   }
 
   /**
+   * A claim (any type other than Unknown) must cite evidence; an empty evidence
+   * list is not proof, so such an answer is rejected. An Unknown answer reports
+   * missing data, so its confidence is "unknown" rather than the model's label.
+   */
+  static enforceGrounding(validated) {
+    if (validated.type === DATA_CLASSIFICATION.UNKNOWN) {
+      return { ...validated, confidence: CONFIDENCE_LEVELS.UNKNOWN };
+    }
+    if (validated.evidence.length === 0) {
+      throw new Error(`Gemini returned a ${validated.type} answer without evidence`);
+    }
+    return validated;
+  }
+
+  /**
    * Answers a question that carries no employee/HR signal. The prompt contains no
    * Employee 360 context, so nothing about any employee can reach the model here.
    * Returns null when the model hands the question back to the employee path.
@@ -123,7 +138,9 @@ class AskGenerator {
       "5. Do not use lowercase or alternative values for the 'type' field.",
       "6. For the 'evidence' field, use ONLY exact domain.field references that exist in the supplied evidence array.",
       "7. Never invent, infer, or create evidence references that are not present in the supplied evidence array.",
-      "8. Return JSON only. Do not wrap the JSON in markdown code fences."
+      "8. Every answer whose type is not Unknown MUST cite at least one evidence reference that supports it.",
+      "9. If the requested information is Unknown, Not evaluated or missing from the context, set type to Unknown.",
+      "10. Return JSON only. Do not wrap the JSON in markdown code fences."
     ].join('\n');
 
     try {
@@ -153,7 +170,7 @@ class AskGenerator {
           throw new Error('Gemini returned unsupported evidence references');
         }
 
-        return validated;
+        return AskGenerator.enforceGrounding(validated);
       }
     } catch (err) {
       Logger.warn('AI Ask generator fallback triggered', {
@@ -162,7 +179,7 @@ class AskGenerator {
     }
 
     return {
-      answer: `Information for question "${cleanQuestion}" could not be confirmed with high confidence from current verified source records.`,
+      answer: "I couldn't confirm that from this employee's verified Zoho People records.",
       type: DATA_CLASSIFICATION.UNKNOWN,
       confidence: CONFIDENCE_LEVELS.UNKNOWN,
       evidence: [],

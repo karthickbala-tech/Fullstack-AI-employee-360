@@ -51,6 +51,40 @@ class EvidenceService {
         canonical.deterministicMetrics.tenure.formatted;
     }
 
+    // Metrics calculated from source counts; evidence only when the calculation succeeded.
+    const calculatedMetrics = [
+      {
+        domain: 'attendance',
+        field: 'attendancePercentage',
+        metric: canonical.deterministicMetrics?.attendancePercentage,
+        source: 'Calculated from Zoho People attendance summary',
+        notes: 'Attendance percentage calculated deterministically from present and total working days.'
+      },
+      {
+        domain: 'leave',
+        field: 'leaveUtilization',
+        metric: canonical.deterministicMetrics?.leaveUtilization,
+        source: 'Calculated from Zoho People leave balances',
+        notes: 'Leave utilization calculated deterministically from leave taken and entitled.'
+      }
+    ];
+
+    for (const item of calculatedMetrics) {
+      if (!item.metric || item.metric.value === null || item.metric.value === undefined) continue;
+
+      evidenceList.push(new EvidenceItem({
+        domain: item.domain,
+        field: item.field,
+        source: item.source,
+        classification: DATA_CLASSIFICATION.CALCULATION,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: item.notes
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = item.metric.formatted;
+    }
+
     // Employee form fields copied verbatim into the canonical model; evidence
     // exists only when Zoho People actually supplied the value.
     const employeeFormFields = [

@@ -19,6 +19,7 @@ class AIContextBuilder {
         fullName: canonical.employee?.fullName || 'Unknown',
         jobTitle: canonical.employment?.jobTitle || 'Unknown',
         department: canonical.organisation?.department || 'Unknown',
+        reportingManager: canonical.organisation?.reportingManagerName || 'Unknown',
         location: canonical.employment?.workLocation || 'Unknown'
       },
       employment: {
