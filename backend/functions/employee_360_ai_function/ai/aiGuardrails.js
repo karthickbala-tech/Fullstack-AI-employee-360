@@ -14,7 +14,7 @@ class AIGuardrails {
       "RULE 2: Strictly separate Fact from Interpretation and Trend.",
       "RULE 3: Do not make termination, compensation, promotion, or hiring decisions.",
       "RULE 4: Do not infer medical conditions, mental health, or protected personal characteristics under any circumstance.",
-      "RULE 5: Provide evidence-based references for every assertion."
+      "RULE 5: Ground every assertion in the supplied evidence; cite references only where the response format asks for them."
     ].join('\n');
   }
 

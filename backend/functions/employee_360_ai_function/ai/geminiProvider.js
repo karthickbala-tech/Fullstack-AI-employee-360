@@ -38,8 +38,14 @@ class GeminiProvider extends AIProvider {
       ],
       generationConfig: {
         temperature: options.temperature !== undefined ? options.temperature : 0.2,
-        maxOutputTokens: options.maxOutputTokens || 1024
-      }
+        maxOutputTokens: options.maxOutputTokens || 1024,
+        ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {})
+      },
+      // Rules travel separately from user-supplied text, so the question and
+      // conversation cannot pose as instructions.
+      ...(options.systemInstruction
+        ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } }
+        : {})
     };
 
     const modelsToTry = [this.model, ...CANDIDATE_MODELS.filter(m => m !== this.model)];
