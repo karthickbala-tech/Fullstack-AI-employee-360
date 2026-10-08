@@ -85,6 +85,35 @@ class EvidenceService {
       evidenceList[evidenceList.length - 1].value = item.metric.formatted;
     }
 
+    // Source values that trends are derived from.
+    if (Number.isFinite(canonical.attendance?.lateDays)) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'attendance',
+        field: 'lateDays',
+        source: 'Zoho People attendance summary',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Late check-in count directly obtained from the Zoho People attendance summary.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = canonical.attendance.lateDays;
+    }
+
+    if (Array.isArray(canonical.performance?.historicalRatings) && canonical.performance.historicalRatings.length >= 2) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'performance',
+        field: 'historicalRatings',
+        source: 'Zoho People Appraisal Module',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Appraisal ratings for consecutive review periods directly obtained from the performance source.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = canonical.performance.historicalRatings.length;
+    }
+
     // Employee form fields copied verbatim into the canonical model; evidence
     // exists only when Zoho People actually supplied the value.
     const employeeFormFields = [

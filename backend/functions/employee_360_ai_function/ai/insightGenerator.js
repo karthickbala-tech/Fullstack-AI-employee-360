@@ -3,6 +3,7 @@
 const GeminiProvider = require('./geminiProvider');
 const AIContextBuilder = require('./aiContextBuilder');
 const AIGuardrails = require('./aiGuardrails');
+const AskGenerator = require('./askGenerator');
 const { DATA_CLASSIFICATION, CONFIDENCE_LEVELS } = require('../config/constants');
 const Logger = require('../utils/logger');
 
@@ -36,11 +37,16 @@ class InsightGenerator {
       return [];
     }
 
-    const deterministicInsights = [];
+    const insights = [];
+    // Every insight, deterministic or AI, must cite evidence that exists for this employee.
+    const grounded = references =>
+      Array.isArray(references) &&
+      references.length > 0 &&
+      InsightGenerator.validateEvidenceReferences(references, canonical.evidence);
 
     // Add deterministic metric evaluations
-    if (canonical.deterministicMetrics?.tenure?.years >= 2) {
-      deterministicInsights.push({
+    if (canonical.deterministicMetrics?.tenure?.years >= 2 && grounded(['employment.tenure'])) {
+      insights.push({
         domain: 'employment',
         type: DATA_CLASSIFICATION.CALCULATION,
         headline: 'Tenure Milestone',
@@ -50,50 +56,47 @@ class InsightGenerator {
       });
     }
 
-    if (canonical.trends && canonical.trends.length > 0) {
-      canonical.trends.forEach(t => {
-        deterministicInsights.push({
-          domain: t.domain,
-          type: DATA_CLASSIFICATION.TREND,
-          headline: `Trend: ${t.metric}`,
-          description: t.evidence,
-          confidence: CONFIDENCE_LEVELS.MEDIUM,
-          evidence: [t.evidence]
-        });
+    for (const t of canonical.trends || []) {
+      if (!grounded(t.evidenceRefs)) {
+        Logger.warn('Trend insight skipped: no supporting evidence', { domain: t.domain, metric: t.metric });
+        continue;
+      }
+      insights.push({
+        domain: t.domain,
+        type: DATA_CLASSIFICATION.TREND,
+        headline: `Trend: ${t.metric}`,
+        description: t.evidence,
+        confidence: CONFIDENCE_LEVELS.MEDIUM,
+        evidence: [...t.evidenceRefs]
       });
     }
 
     // Attempt AI synthesis for deeper qualitative patterns
     try {
-      const contextStr = AIContextBuilder.buildPromptContext(canonical);
-      const prompt = [
+      const systemInstruction = [
         AIGuardrails.getSystemPolicy(),
-        "TASK: Provide 2 structured employee insights based only on provided facts and evidence.",
-        "Each insight MUST include an evidence array containing only exact domain.field references from the supplied evidence array.",
-        "Never invent, infer, or create evidence references that are not present in the supplied evidence array.",
-        "Output ONLY a JSON array with objects matching: [{\"domain\":\"performance\",\"headline\":\"...\",\"description\":\"...\",\"evidence\":[\"domain.field\"]}]",
-        "CONTEXT:",
-        contextStr
+        '',
+        'TASK: Provide up to 2 structured employee insights based only on the supplied facts and evidence.',
+        'Respond with a JSON array of objects: [{"domain": string, "headline": string, "description": string, "evidence": [domain.field strings]}].',
+        'Each insight MUST cite at least one exact domain.field reference from the supplied evidence array. Never invent references.',
+        'If the context does not support a meaningful insight, return an empty array.'
       ].join('\n');
 
-      const response = await this.provider.generateCompletion(prompt, { temperature: 0.1 });
+      const response = await this.provider.generateCompletion(
+        `CONTEXT:\n${AIContextBuilder.buildPromptContext(canonical)}`,
+        { temperature: 0.1, systemInstruction, responseMimeType: 'application/json' }
+      );
       if (response) {
-        const clean = response.replace(/^```json/g, '').replace(/```$/g, '').trim();
-        const parsed = JSON.parse(clean);
+        const parsed = AskGenerator.parseJson(response);
         if (Array.isArray(parsed)) {
-          parsed.forEach(item => {
-            if (
-              !InsightGenerator.validateEvidenceReferences(
-                item.evidence,
-                canonical.evidence
-              )
-            ) {
-              throw new Error(
-                'Gemini returned unsupported insight evidence references'
-              );
+          // One unsupported reference rejects the whole AI batch (fail closed).
+          for (const item of parsed) {
+            if (!grounded(item?.evidence)) {
+              throw new Error('Gemini returned unsupported insight evidence references');
             }
-
-            deterministicInsights.push({
+          }
+          for (const item of parsed) {
+            insights.push({
               domain: item.domain || 'general',
               type: DATA_CLASSIFICATION.AI_INSIGHT,
               headline: item.headline,
@@ -101,14 +104,14 @@ class InsightGenerator {
               confidence: CONFIDENCE_LEVELS.MEDIUM,
               evidence: item.evidence.map(reference => reference.trim())
             });
-          });
+          }
         }
       }
     } catch (err) {
       Logger.warn('AI insight synthesis skipped or failed', { message: err.message });
     }
 
-    return deterministicInsights;
+    return insights;
   }
 }
 

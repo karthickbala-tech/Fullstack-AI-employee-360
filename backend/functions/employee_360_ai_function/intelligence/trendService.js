@@ -21,6 +21,7 @@ class TrendService {
         trend: direction,
         delta: diff,
         classification: DATA_CLASSIFICATION.TREND,
+        evidenceRefs: ['performance.historicalRatings'],
         evidence: `Compared ${recent[0].period} (${recent[0].rating}) to ${recent[1].period} (${recent[1].rating})`
       });
     }
@@ -32,6 +33,7 @@ class TrendService {
         trend: 'attention_required',
         delta: att.lateDays,
         classification: DATA_CLASSIFICATION.TREND,
+        evidenceRefs: ['attendance.lateDays'],
         evidence: `${att.lateDays} late check-in instances recorded in current cycle`
       });
     }
