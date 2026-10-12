@@ -1,0 +1,54 @@
+// AI Employee 360 - Zoho People standalone function: e360_identity_assertion
+//
+// Called by the Employee 360 Web Tab through
+//   ZOHO.People.API.invokeStandaloneFunction({ fnName: "e360_identity_assertion", params: "{}" })
+// Returns a short-lived assertion that the Catalyst backend verifies
+// (functions/employee_360_ai_function/middleware/zohoPeopleAssertion.js).
+//
+// Identity comes ONLY from the Zoho People execution context (zoho.loginuserid).
+// The function takes no parameters: nothing the browser sends can change the
+// email, portal, times or signature.
+//
+// Format: base64url(payload) + "." + base64url(HMAC-SHA256(secret, payload))
+// payload: 1|e360_webtab|<email>|<portalId>|<iat>|<exp>|<nonce>
+//   iat/exp = Unix seconds, lifetime 240 s (backend maximum 300 s)
+//   nonce   = digits only, 31 characters
+//
+// SECRET: replace REPLACE_WITH_SIGNING_SECRET in Zoho People only, with the same
+// value configured as E360_IDENTITY_ASSERTION_SECRET in Catalyst (at least 32
+// characters). Never commit the real value to this file.
+//
+// Return type: string (the map serialized as JSON, as the identity probe did).
+
+string e360_identity_assertion()
+{
+	secret = "REPLACE_WITH_SIGNING_SECRET";
+	portalId = "60076299713";
+	lifetimeSeconds = 240;
+
+	result = Map();
+	email = zoho.loginuserid;
+	if(email == null || email.trim() == "")
+	{
+		result.put("error","no_login_user");
+		return result.toString();
+	}
+	email = email.trim();
+
+	// Unix time in whole seconds: epoch milliseconds without the last 3 digits.
+	nowMs = zoho.currenttime.toLong().toString();
+	iat = nowMs.subString(0,nowMs.length() - 3);
+	exp = (iat.toLong() + lifetimeSeconds).toString();
+	nonce = nowMs + randomNumber(100000000,999999999).toString() + randomNumber(100000000,999999999).toString();
+
+	payload = "1|e360_webtab|" + email + "|" + portalId + "|" + iat + "|" + exp + "|" + nonce;
+
+	// Standard base64 -> base64url: "+" -> "-", "/" -> "_", drop "=" (literal, not regex).
+	payloadPart = zoho.encryption.base64Encode(payload);
+	payloadPart = payloadPart.replaceAll("+","-",true).replaceAll("/","_",true).replaceAll("=","",true);
+	signaturePart = zoho.encryption.hmacsha256(secret,payload,"base64");
+	signaturePart = signaturePart.replaceAll("+","-",true).replaceAll("/","_",true).replaceAll("=","",true);
+
+	result.put("assertion",payloadPart + "." + signaturePart);
+	return result.toString();
+}

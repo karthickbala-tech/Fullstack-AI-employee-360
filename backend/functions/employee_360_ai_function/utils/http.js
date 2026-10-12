@@ -11,7 +11,7 @@ class HttpUtils {
       'Content-Type': 'application/json; charset=utf-8',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-employee-id',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-employee-id, x-e360-assertion',
       'X-Content-Type-Options': 'nosniff',
       ...extraHeaders
     });

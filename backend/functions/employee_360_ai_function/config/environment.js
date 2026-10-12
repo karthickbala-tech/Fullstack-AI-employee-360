@@ -43,8 +43,35 @@ class Environment {
         leave: 'read',
         performance: 'read',
         orgstructure: 'read'
+      },
+      // Explicit organization-wide access policy. Empty means nobody has it: it is
+      // never inferred from Admin, Super Admin, CEO, designation or Catalyst role.
+      // zohoRoles is inactive until the Zoho Role field is verified in the
+      // directory records (see AuthorizationBoundary.ZOHO_ROLE_FIELD_VERIFIED).
+      organizationAccess: {
+        employeeIds: [],
+        zohoRoles: []
       }
     };
+  }
+
+  /**
+   * Shared secret that verifies Zoho People Web Tab identity assertions. Read
+   * from the process environment only: no default, no .env file, never logged.
+   * Missing means every assertion is rejected.
+   */
+  static getIdentityAssertionSecret() {
+    const secret = process.env.E360_IDENTITY_ASSERTION_SECRET;
+    return typeof secret === 'string' && secret.length > 0 ? secret : null;
+  }
+
+  /**
+   * Development-only identity diagnostic on /v1/me. On only when the process
+   * environment has E360_IDENTITY_DIAGNOSTICS=enabled (set in the Development
+   * console only); anything else, including a missing variable, is off.
+   */
+  static isIdentityDiagnosticsEnabled() {
+    return process.env.E360_IDENTITY_DIAGNOSTICS === 'enabled';
   }
 
   /**

@@ -118,8 +118,18 @@ test('an employee asking for headcount is refused without reading the directory'
   assert.equal(calls.directory, 0);
 });
 
-test('an administrator gets the headcount; a manager gets their verified reports', async t => {
+test('an admin role label alone does not unlock organization figures', async t => {
   const admin = makeService(t, { authEnabled: true, user: { role: 'admin', scope: 'all', employeeId: null } });
+  const refused = await admin.service.ask('HRM4', 'How many employees are there?', admin.context);
+  assert.match(refused.answer, /outside your access/);
+  assert.equal(admin.calls.directory, 0);
+});
+
+test('explicit organization access gets the headcount; a manager gets their verified reports', async t => {
+  const admin = makeService(t, {
+    authEnabled: true,
+    user: { role: 'admin', scope: 'all', employeeId: 'HRM2', organizationAccess: true }
+  });
   const headcount = await admin.service.ask('HRM4', 'How many employees are there?', admin.context);
   assert.match(headcount.answer, /\*\*4 active employees\*\*/);
   assert.equal(admin.calls.ai, 0);

@@ -449,6 +449,13 @@ no evidence, because they make no claim about the employee.
 Organization answers cite `directory.*` references (the live Zoho People
 employee directory fields used).
 
+With authentication on, a question about the asker ("my attendance",
+"when did I join?") is answered from the signed-in employee's own
+record, not the employee in the URL. The response then carries the
+additive `subjectEmployeeId` naming whose record answered. Organization
+answers (headcount, by-department figures) require the explicit
+`organizationAccess` policy; an admin role label does not grant them.
+
 ## GET `/v1/me`
 
 Returns the caller's access: `authenticationEnabled`, `role`
@@ -457,6 +464,34 @@ is disabled), `scope` (`all`, `team`, `self`), `employeeId` and
 `allowedEmployeeIds` (`null` when unrestricted). Clients may use it to
 show only what the backend allows; the backend still enforces every
 request.
+
+With authentication on, the response also has (additive):
+`authenticated` (true), `identitySource` (`catalyst` | `zoho_people`),
+`displayName`, `employeeMapping` (`matched` | `not_found` | `ambiguous`
+| `no_email`, or `null` when not resolved), `allowedEmployees`
+(`[{ employeeId, fullName }]`, `null` when `scope` is `all`),
+`canAnalyzeTeam` (verified direct reports exist) and
+`canAnalyzeOrganization` (explicit `organizationAccess` policy only).
+With authentication off the response is exactly the five fields above
+with `authenticationEnabled: false`.
+
+### Zoho People Web Tab identity
+
+The Web Tab gets a short-lived assertion from the Zoho People function
+`e360_identity_assertion` and sends it as the `e360Assertion` field of a
+JSON body in a `text/plain` POST. That is a CORS simple request, so there
+is no preflight; the Catalyst gateway answers preflights without CORS
+headers. The read routes (`/v1/me`, `/v1/zoho/status`,
+`/v1/zoho/employees`, and the employee `360`, `summary`, `insights` and
+`timeline` routes) accept POST as well as GET for this. Ask carries the
+field next to `question`. API clients may send the same token in the
+`x-e360-assertion` header instead (never `Authorization`). Sending it both
+ways is rejected. It never goes in the URL, and the backend removes it
+from the body before routing. A request carrying an assertion is
+authenticated only by it. A missing, malformed, expired, wrongly signed or wrong-portal
+assertion is rejected with HTTP 401 and error code
+`INVALID_IDENTITY_ASSERTION`. A request with no credentials at all gets
+401 `UNAUTHORIZED`. Format and setup: `zoho-people/IDENTITY_BRIDGE_SETUP.md`.
 
 The exact final response schema must be verified from the running
 backend before the frontend treats every field as mandatory.

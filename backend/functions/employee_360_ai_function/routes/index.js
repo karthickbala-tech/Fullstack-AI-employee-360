@@ -22,15 +22,20 @@ const askController = new AskController();
 const zohoPeopleController = new ZohoPeopleController();
 const meController = new MeController();
 
+// Read routes accept GET, and POST so the Web Tab can carry its identity
+// assertion in a text/plain body (no CORS preflight; see
+// AuthorizationBoundary.takeCredentials). Handlers are the same for both.
+const READ_METHODS = ['GET', 'POST'];
+
 const routes = [
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/me\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => meController.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/zoho\/status\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => zohoPeopleController.getStatus(req, res, params, ctx)
@@ -53,31 +58,31 @@ const routes = [
     paramNames: ['formLinkName'],
     handler: (req, res, params, ctx) => zohoPeopleController.getFormRecords(req, res, params, ctx)
   },  {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/zoho\/employees\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => zohoPeopleController.getEmployees(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/360\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => employee360Controller.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/summary\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => summaryController.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/insights\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => insightsController.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/timeline\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => timelineController.handle(req, res, params, ctx)
@@ -153,9 +158,10 @@ class Router {
       const match = pathname.match(route.pattern);
       if (match) {
         matchedPath = true;
-        if (route.method !== method) {
+        const methods = [].concat(route.method);
+        if (!methods.includes(method)) {
           throw new AppError(
-            `Method ${method} not allowed for route ${pathname}. Expected ${route.method}`,
+            `Method ${method} not allowed for route ${pathname}. Expected ${methods.join(' or ')}`,
             ERROR_CODES.VALIDATION_ERROR,
             HTTP_STATUS.METHOD_NOT_ALLOWED
           );

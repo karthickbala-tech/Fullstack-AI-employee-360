@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-employee-id',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, x-employee-id, x-e360-assertion',
       'Access-Control-Max-Age': '86400'
     });
     res.end();
@@ -36,10 +36,14 @@ module.exports = async (req, res) => {
       }
     }
 
+    // The identity assertion is taken out of the body on every request, so it
+    // never reaches a controller, validator or log, even with authentication off.
+    const credentials = AuthorizationBoundary.takeCredentials(req);
+
     // 1. Establish the caller before any routing. Disabled only for Development
     //    Web Tab testing (Environment.isAuthenticationEnabled); must be on in production.
     if (Environment.isAuthenticationEnabled() && !Router.isPublicRequest(req)) {
-      await AuthorizationBoundary.authenticate(req, context);
+      await AuthorizationBoundary.authenticate(req, context, credentials);
     }
 
     // 2. Delegate routing to route table

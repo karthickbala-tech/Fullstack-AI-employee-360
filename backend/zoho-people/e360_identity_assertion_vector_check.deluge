@@ -1,0 +1,30 @@
+// One-off check that Deluge produces byte-identical output to the Node verifier.
+// Paste into a temporary standalone function, "Save & Execute", compare, then
+// delete it. Uses a published TEST secret and fixed values only; it is not an
+// identity function and must never be called by the Web Tab.
+//
+// Expected:
+//   token = MXxlMzYwX3dlYnRhYnx2ZWN0b3IudXNlckBleGFtcGxlLmNvbXw2MDA3NjI5OTcxM3wxNzkxNDU2MDAwfDE3OTE0NTYyNDB8MTc5MTQ1NjAwMDEyMzEyMzQ1Njc4OTk4NzY1NDMyMQ.0yzEVJFtbefVEZUSDe9DZ5xIYqMPWGysppqwL8CPe_8
+//   unixSecondsNow = current Unix time in seconds (compare with https://www.epochconverter.com)
+
+string e360_identity_vector_check()
+{
+	secret = "e360-test-vector-secret-not-for-production-0001";
+	payload = "1|e360_webtab|vector.user@example.com|60076299713|1791456000|1791456240|1791456000123123456789987654321";
+
+	payloadPart = zoho.encryption.base64Encode(payload);
+	payloadPart = payloadPart.replaceAll("+","-",true).replaceAll("/","_",true).replaceAll("=","",true);
+	signaturePart = zoho.encryption.hmacsha256(secret,payload,"base64");
+	signaturePart = signaturePart.replaceAll("+","-",true).replaceAll("/","_",true).replaceAll("=","",true);
+	token = payloadPart + "." + signaturePart;
+
+	expected = "MXxlMzYwX3dlYnRhYnx2ZWN0b3IudXNlckBleGFtcGxlLmNvbXw2MDA3NjI5OTcxM3wxNzkxNDU2MDAwfDE3OTE0NTYyNDB8MTc5MTQ1NjAwMDEyMzEyMzQ1Njc4OTk4NzY1NDMyMQ.0yzEVJFtbefVEZUSDe9DZ5xIYqMPWGysppqwL8CPe_8";
+	nowMs = zoho.currenttime.toLong().toString();
+
+	result = Map();
+	result.put("token",token);
+	result.put("matches",token == expected);
+	result.put("unixSecondsNow",nowMs.subString(0,nowMs.length() - 3));
+	info result;
+	return result.toString();
+}
