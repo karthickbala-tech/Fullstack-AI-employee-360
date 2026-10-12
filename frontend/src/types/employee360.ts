@@ -1,16 +1,9 @@
 /**
- * Canonical Employee 360 Types
- * Strictly aligned with functions/employee_360_ai_function/models/employee360Model.js
- * and verified backend API response structures in FRONTEND_API_CONTRACT.md.
+ * AI Employee 360 — Canonical TypeScript Models
+ * Derived strictly from the verified backend source code and FRONTEND_API_CONTRACT.md.
  */
 
 export type DataClassification =
-  | 'fact'
-  | 'calculation'
-  | 'trend'
-  | 'correlation'
-  | 'ai_insight'
-  | 'unknown'
   | 'Fact'
   | 'Calculation'
   | 'Trend'
@@ -18,266 +11,292 @@ export type DataClassification =
   | 'AI Insight'
   | 'Unknown';
 
-export type ConfidenceLevel =
-  | 'high'
-  | 'medium'
-  | 'low'
-  | 'unknown'
-  | 'HIGH'
-  | 'MEDIUM'
-  | 'LOW'
-  | 'UNKNOWN';
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
 
-export interface EmployeeProfile {
+export type DataSourceMode = 'mock' | 'live';
+
+export type ActivePage = 'ai' | 'dashboard';
+
+export type DashboardSectionId =
+  | 'overview'
+  | 'summary'
+  | 'timeline'
+  | 'performance'
+  | 'learning'
+  | 'attendance'
+  | 'evidence';
+
+export interface ApiResponseEnvelope<T> {
+  success: boolean;
+  data: T;
+  meta?: {
+    timestamp: string;
+    employeeId?: string;
+    question?: string;
+    [key: string]: unknown;
+  };
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface ZohoConnectionStatus {
+  connected: boolean;
+  connectionName: string;
+  dataCenter: string;
+  portalId: string;
+  organizationName: string;
+  activeRecordsCount?: number;
+  message: string;
+}
+
+export interface EmployeeDirectoryEntry {
+  recordId: string | null;
   employeeId: string;
-  firstName: string | null;
-  lastName: string | null;
   fullName: string | null;
-  email: string | null;
-  phone: string | null;
-  avatarUrl: string | null;
-}
-
-export interface EmploymentInfo {
   jobTitle: string | null;
-  employeeType: string | null;
-  employmentStatus: string | null;
-  dateOfJoining: string | null;
-  confirmationDate: string | null;
-  workLocation: string | null;
-  workShift: string | null;
-  probationStatus: string | null;
-}
-
-export interface OrganisationInfo {
   department: string | null;
-  division: string | null;
-  reportingManagerId: string | null;
-  reportingManagerName: string | null;
-  reportingManagerEmail: string | null;
-  secondaryManagerName: string | null;
+  email: string | null;
+  workLocation: string | null;
+  status: string | null;
 }
 
-export interface AttendancePunch {
+/**
+ * GET /v1/me: the caller's identity and scope as decided by the backend.
+ * With backend authentication off it reports authenticationEnabled: false and
+ * no user; the extra fields are present only when authentication is on.
+ */
+export interface AccessProfile {
+  authenticationEnabled: boolean;
+  role: string;
+  scope: string;
+  employeeId: string | null;
+  allowedEmployeeIds: string[] | null;
+  userId?: string;
+  email?: string | null;
+  identitySource?: 'catalyst' | 'zoho_people' | null;
+  authenticated?: boolean;
+  employeeMapping?: 'matched' | 'not_found' | 'ambiguous' | 'no_email' | null;
+  displayName?: string | null;
+  allowedEmployees?: { employeeId: string; fullName: string | null }[] | null;
+  canAnalyzeTeam?: boolean;
+  canAnalyzeOrganization?: boolean;
+}
+
+export interface EmployeeDirectoryResponse {
+  employees: EmployeeDirectoryEntry[];
+  total: number;
+  connected: boolean;
+  connectionName: string;
+  source: string;
+}
+
+export interface EvidenceRecord {
+  domain: string;
+  field: string;
+  source: string;
+  classification: DataClassification;
+  sourceRecordId: string | null;
+  sourceTimestamp: string;
+  confidence: ConfidenceLevel;
+  notes: string | null;
+  value?: unknown;
+}
+
+export interface TimelineEvent {
+  id: string;
+  eventCode: string;
+  type: string;
+  title: string;
   date: string;
-  checkIn: string;
-  checkOut: string;
-  status?: string;
+  description: string | null;
+  domain: string;
+  source: string;
+  sourceRecordId: string | null;
 }
 
-export interface AttendanceInfo {
-  summaryPeriod: string | null;
-  totalWorkingDays: number;
-  presentDays: number;
-  absentDays: number;
-  lateDays: number;
-  attendancePercentage: number;
-  recentPunches?: AttendancePunch[];
-  status?: string;
-}
-
-export interface LeaveBalanceItem {
-  type?: string;
-  Leave_Type?: string;
-  name?: string;
-  balance?: number;
-  Balance_Count?: number;
-  taken?: number;
-  Taken_Count?: number;
-  entitled?: number;
-}
-
-export interface LeaveInfo {
-  balance: LeaveBalanceItem[];
-  takenThisYear: number;
-  pendingApprovals: number;
-  recentRequests?: Array<{
-    type: string;
-    from: string;
-    to: string;
-    status: string;
-  }>;
-  status?: string;
-}
-
-export interface HistoricalRating {
-  period?: string;
-  cycle?: string;
-  rating: number | string;
-  reviewer?: string;
-  comments?: string;
-}
-
-export interface PerformanceInfo {
-  currentReviewPeriod: string | null;
-  overallRating: string | number | null;
-  historicalRatings: HistoricalRating[];
-  strengths: string[];
-  developmentAreas: string[];
-  reviewStatus: string | null;
-  status?: string;
-}
-
-export interface GoalsInfo {
-  totalGoals: number;
-  completedGoals: number;
-  inProgressGoals: number;
-  items: Array<{
-    id: string;
-    title: string;
-    targetDate?: string;
-    progress?: number;
-    status?: string;
-  }>;
-  status?: string;
-}
-
-export interface SkillsInfo {
-  technical: Array<{
-    name: string;
-    proficiency?: number;
-    category?: string;
-  }>;
-  competencies: Array<{
-    name: string;
-    proficiency?: number;
-  }>;
-  skillGaps: Array<{
-    skill: string;
-    current?: number;
-    required?: number;
-    gap?: number;
-  }>;
-}
-
-export interface LearningInfo {
-  enrolledCourses: Array<{
-    id: string;
-    title: string;
-    status?: string;
-  }>;
-  completedCourses: Array<{
-    id: string;
-    title: string;
-    completedDate?: string;
-    hours?: number;
-  }>;
-  certifications: Array<{
-    id?: string;
-    name: string;
-    issuer?: string;
-    issueDate?: string;
-    expiryDate?: string;
-    status?: string;
-  }>;
-}
-
-export interface CareerPromotion {
-  designation?: string;
-  title?: string;
-  effectiveDate?: string;
-  date?: string;
-  notes?: string;
-  department?: string;
-}
-
-export interface CareerInfo {
-  promotions: CareerPromotion[];
-  roleChanges: any[];
-  aspirations: string | null;
-}
-
-export interface LifecycleInfo {
-  onboardingCompleted: boolean;
-  currentStage: string;
-  exitInitiated: boolean;
-  exitDate: string | null;
+export interface DeterministicMetricItem {
+  value?: number | string | null;
+  years?: number;
+  months?: number;
+  totalMonths?: number;
+  formatted?: string;
+  classification: DataClassification;
 }
 
 export interface DeterministicMetrics {
-  tenure?: {
-    years?: number;
-    months?: number;
-    days?: number;
-    formatted: string;
-    classification: DataClassification;
-  };
-  attendancePercentage?: {
-    value: number | null;
-    formatted: string;
-    classification: DataClassification;
-  };
-  leaveUtilization?: {
-    value: number | null;
-    formatted: string;
-    classification: DataClassification;
-  };
-  performanceRating?: {
-    value: string | number | null;
-    formatted?: string;
-    classification: DataClassification;
-  };
-  [key: string]: any;
+  tenure?: DeterministicMetricItem;
+  attendancePercentage?: DeterministicMetricItem;
+  leaveUtilization?: DeterministicMetricItem;
+  performanceRating?: DeterministicMetricItem;
+  [key: string]: DeterministicMetricItem | undefined;
 }
 
 export interface TrendItem {
   domain: string;
   metric: string;
-  trend: string;
-  delta?: number;
-  classification: DataClassification;
+  direction?: string;
   evidence: string;
 }
 
-export interface TimelineEvent {
-  id: string;
-  type: string;
-  title: string;
-  date: string;
-  description: string;
-  domain?: string;
-  source?: string;
-  category?: string;
+export interface LeaveBalanceItem {
+  type: string | null;
+  entitled: number | null;
+  taken: number | null;
+  balance: number | null;
 }
 
-export interface EvidenceItem {
+export interface LeaveRequestItem {
+  id: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  status: string;
+}
+
+export interface AttendancePunchItem {
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  status: string;
+}
+
+export interface HistoricalRatingItem {
+  period: string;
+  rating: number | string;
+  reviewer?: string | null;
+}
+
+export interface GoalItem {
   id?: string;
-  domain?: string;
-  field?: string;
-  source: string;
-  classification: DataClassification;
-  sourceRecordId?: string;
-  confidence?: string;
-  notes?: string;
-  value?: any;
-  description?: string;
+  title: string;
+  status: string;
+  progress?: number | null;
+  dueDate?: string | null;
+}
+
+export interface CourseItem {
+  title: string;
+  provider?: string | null;
+  status?: string | null;
+  completedDate?: string | null;
+  progress?: number | null;
+}
+
+export interface CertificationItem {
+  name: string;
+  issuer?: string | null;
+  issuedDate?: string | null;
+}
+
+export interface PromotionItem {
+  designation: string;
+  effectiveDate: string;
+  notes?: string | null;
+  sourceRecordId?: string | null;
+}
+
+export interface RoleChangeItem {
+  fromRole?: string | null;
+  toRole: string;
+  effectiveDate: string;
+  department?: string | null;
 }
 
 export interface Employee360Data {
   metadata: {
     employeeId: string;
+    sourceRecordId: string | null;
     schemaVersion: string;
     builtAt: string;
     tenantId: string;
   };
-  employee: EmployeeProfile;
-  employment: EmploymentInfo;
-  organisation: OrganisationInfo;
-  attendance: AttendanceInfo;
-  leave: LeaveInfo;
-  performance: PerformanceInfo;
-  goals: GoalsInfo;
-  skills: SkillsInfo;
-  learning: LearningInfo;
-  career: CareerInfo;
-  lifecycle: LifecycleInfo;
+  isLiveZohoData?: boolean;
+  liveSyncStatus?: string;
+  employee: {
+    employeeId: string;
+    firstName: string | null;
+    lastName: string | null;
+    fullName: string | null;
+    email: string | null;
+    phone: string | null;
+    avatarUrl: string | null;
+  };
+  employment: {
+    jobTitle: string | null;
+    employeeType: string | null;
+    employmentStatus: string | null;
+    dateOfJoining: string | null;
+    confirmationDate: string | null;
+    workLocation: string | null;
+    workShift: string | null;
+    probationStatus: string | null;
+  };
+  organisation: {
+    department: string | null;
+    division: string | null;
+    reportingManagerId: string | null;
+    reportingManagerName: string | null;
+    reportingManagerEmail: string | null;
+    secondaryManagerName: string | null;
+  };
+  attendance: {
+    summaryPeriod: string | null;
+    totalWorkingDays: number | null;
+    presentDays: number | null;
+    absentDays: number | null;
+    lateDays: number | null;
+    attendancePercentage: number | null;
+    recentPunches: AttendancePunchItem[];
+  };
+  leave: {
+    balance: LeaveBalanceItem[];
+    takenThisYear: number | null;
+    pendingApprovals: number | null;
+    recentRequests: LeaveRequestItem[];
+  };
+  performance: {
+    currentReviewPeriod: string | null;
+    overallRating: number | string | null;
+    historicalRatings: HistoricalRatingItem[];
+    strengths: string[];
+    developmentAreas: string[];
+    reviewStatus: string | null;
+  };
+  goals: {
+    totalGoals: number | null;
+    completedGoals: number | null;
+    inProgressGoals: number | null;
+    items: GoalItem[];
+  };
+  skills: {
+    technical: string[];
+    competencies: string[];
+    skillGaps: string[];
+  };
+  learning: {
+    enrolledCourses: Array<string | CourseItem>;
+    completedCourses: Array<string | CourseItem>;
+    certifications: Array<string | CertificationItem>;
+  };
+  career: {
+    promotions: PromotionItem[];
+    roleChanges: RoleChangeItem[];
+    aspirations: string | null;
+  };
+  lifecycle: {
+    onboardingCompleted: boolean | null;
+    currentStage: string | null;
+    exitInitiated: boolean | null;
+    exitDate: string | null;
+  };
   deterministicMetrics: DeterministicMetrics;
-  evidence: EvidenceItem[];
+  trends?: TrendItem[];
+  timeline?: TimelineEvent[];
+  evidence: EvidenceRecord[];
   limitations: string[];
-  isLiveZohoData: boolean;
-  liveSyncStatus: string;
-  trends: TrendItem[];
-  timeline: TimelineEvent[];
 }
 
 export interface EmployeeSummaryResponse {
@@ -289,21 +308,18 @@ export interface EmployeeSummaryResponse {
   limitations: string[];
 }
 
-export interface InsightItem {
+export interface EmployeeInsightItem {
   domain: string;
   type: DataClassification;
   headline: string;
   description: string;
   confidence: ConfidenceLevel;
   evidence: string[];
-  severity?: string;
-  recommendedAction?: string;
-  source?: string;
 }
 
 export interface EmployeeInsightsResponse {
   employeeId: string;
-  insights: InsightItem[];
+  insights: EmployeeInsightItem[];
   metricsSnapshot: DeterministicMetrics;
   limitations: string[];
 }
@@ -314,33 +330,49 @@ export interface EmployeeTimelineResponse {
   totalEvents: number;
 }
 
+export interface AskHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AskAIRequest {
+  question: string;
+  history?: AskHistoryTurn[];
+}
+
+// How the backend produced an Ask answer (see FRONTEND_API_CONTRACT.md).
+export type AskRoute = 'conversation' | 'general' | 'deterministic' | 'organization' | 'employee';
+
 export interface AskAIResponse {
   answer: string;
   type: DataClassification;
   confidence: ConfidenceLevel;
   evidence: string[];
   limitations: string[];
+  route?: AskRoute;
 }
 
-export interface ZohoConnectionStatus {
-  connected: boolean;
-  connectionName: string;
-  dataCenter?: string;
-  portalId?: string;
-  organizationName?: string;
-  activeRecordsCount?: number;
-  message: string;
-  error?: string;
-  isAuthError?: boolean;
-}
-
-export interface ZohoDirectoryEmployee {
-  recordId: string | null;
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  timestamp: string;
   employeeId: string;
-  fullName: string;
-  jobTitle: string | null;
-  department: string | null;
-  email: string | null;
-  workLocation: string | null;
-  status: string;
+  content: string;
+  responseMeta?: {
+    route?: AskRoute;
+    type: DataClassification;
+    confidence: ConfidenceLevel;
+    evidence: string[];
+    limitations: string[];
+    knownFactsSummary?: Array<{ label: string; value: string; source: string; classification: DataClassification }>;
+    unknownAttributes?: string[];
+  };
+}
+
+export interface ConversationThread {
+  id: string;
+  employeeId: string;
+  title: string;
+  updatedAt: string;
+  messages: ChatMessage[];
 }
