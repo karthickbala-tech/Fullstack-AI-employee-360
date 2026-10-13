@@ -97,6 +97,12 @@ class AskService {
     return OTHER_PERSON.test(AskService._normalizeForSubject(question));
   }
 
+  /** Reply-language options for the AI, set by the controller for non-English questions. */
+  static aiOptions(context) {
+    const language = context?.language;
+    return language ? { languageName: language.name, originalQuestion: language.originalQuestion } : {};
+  }
+
   static _isAboutAsker(question) {
     return AskService._mentionsAsker(question) && !AskService._mentionsOther(question);
   }
@@ -182,7 +188,7 @@ class AskService {
     // General questions: answered without any Employee 360 context, unless the
     // model hands the question back to the employee path.
     if (route === ROUTES.GENERAL) {
-      const generalResult = await timer.measure('generalAi', () => this.askGenerator.answerGeneral(question, history));
+      const generalResult = await timer.measure('generalAi', () => this.askGenerator.answerGeneral(question, history, AskService.aiOptions(context)));
       if (generalResult) {
         Logger.info('Ask answered on the general path', { employeeId });
         await timer.measure('audit', () => this._audit(employeeId, question, generalResult, context));
@@ -225,7 +231,8 @@ class AskService {
     const answerResult = await timer.measure('employeeAi', () => this.askGenerator.answerQuestion(
       canonical,
       question,
-      history
+      history,
+      AskService.aiOptions(context)
     ));
 
     await timer.measure('audit', () => this._audit(subjectId, question, answerResult, context));

@@ -46,36 +46,59 @@ const SDK_INIT_TIMEOUT_MS = 8000;
 const ASSERTION_REUSE_MS = 4 * 60 * 1000;
 // Never reuse an assertion within this margin of its declared expiry.
 const EXPIRY_MARGIN_MS = 30 * 1000;
-// After a failure, wait before invoking the function again.
-const FAILURE_RETRY_MS = 60 * 1000;
+// After a failure, wait briefly before invoking the function again. Short, because
+// while no assertion is available every request is unauthenticated (401).
+const FAILURE_RETRY_MS = 5 * 1000;
+// One quick retry when the SDK call itself throws (a transient Zoho hiccup).
+const INVOKE_RETRY_DELAY_MS = 400;
 const MAX_SEARCH_DEPTH = 5;
 const ASSERTION_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
-let sdkInit: Promise<boolean> | null = null;
+// The SDK's own init() runs once; a slow or failed start is waited for again
+// on the next request instead of being remembered as "unavailable" for the session.
+let sdkInitCall: Promise<void> | null = null;
+let sdkReady = false;
 let cached: { assertion: string; reuseUntil: number } | null = null;
 let inFlight: Promise<string | null> | null = null;
 let lastFailureAt = 0;
 let status: IdentityStatus = 'not_requested';
 
-/** Initializes the Zoho People Widget SDK once; resolves false outside Zoho People. */
+/**
+ * Initializes the Zoho People Widget SDK; resolves false outside Zoho People or
+ * when init does not finish within the timeout. init() is called once; a later
+ * call waits for that same init again (it may simply have been slow), and a
+ * failed init is started afresh.
+ */
 export function initWebTabSdk(): Promise<boolean> {
-  if (sdkInit) return sdkInit;
+  if (sdkReady) return Promise.resolve(true);
 
   const app = window.ZOHO?.embeddedApp;
-  if (!app || typeof app.init !== 'function') {
-    sdkInit = Promise.resolve(false);
-    return sdkInit;
-  }
+  if (!app || typeof app.init !== 'function') return Promise.resolve(false);
 
-  sdkInit = new Promise<boolean>((resolve) => {
-    const timer = window.setTimeout(() => resolve(false), SDK_INIT_TIMEOUT_MS);
-    Promise.resolve()
+  if (!sdkInitCall) {
+    sdkInitCall = Promise.resolve()
       .then(() => app.init())
-      .then(() => resolve(true))
-      .catch(() => resolve(false))
+      .then(
+        () => {
+          sdkReady = true;
+        },
+        (error: unknown) => {
+          sdkInitCall = null;
+          throw error;
+        }
+      );
+  }
+  const call = sdkInitCall;
+  return new Promise<boolean>((resolve) => {
+    const timer = window.setTimeout(() => resolve(false), SDK_INIT_TIMEOUT_MS);
+    call
+      .then(() => resolve(true), () => resolve(false))
       .finally(() => window.clearTimeout(timer));
   });
-  return sdkInit;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 /** Finds the `assertion` value in the SDK response without trusting its shape. */
@@ -117,10 +140,15 @@ async function requestAssertion(): Promise<string | null> {
   }
 
   try {
-    const response = await api.invokeStandaloneFunction({
-      fnName: IDENTITY_FUNCTION_NAME,
-      params: '{}',
-    });
+    const invoke = () => api.invokeStandaloneFunction({ fnName: IDENTITY_FUNCTION_NAME, params: '{}' });
+    let response: unknown;
+    try {
+      response = await invoke();
+    } catch {
+      // Network blips between the tab and Zoho are common; one retry, no loop
+      await wait(INVOKE_RETRY_DELAY_MS);
+      response = await invoke();
+    }
     const assertion = findAssertion(response);
     if (!assertion) {
       status = 'function_unavailable';
@@ -160,10 +188,10 @@ function reusableUntil(assertion: string, obtainedAt: number): number {
  * Returns a current assertion, or null when none can be obtained. Never throws;
  * the backend decides what an unauthenticated request may do.
  */
-export async function getIdentityAssertion(): Promise<string | null> {
+export async function getIdentityAssertion(options: { force?: boolean } = {}): Promise<string | null> {
   const now = Date.now();
   if (cached && now < cached.reuseUntil) return cached.assertion;
-  if (!cached && lastFailureAt && now - lastFailureAt < FAILURE_RETRY_MS) return null;
+  if (!options.force && !cached && lastFailureAt && now - lastFailureAt < FAILURE_RETRY_MS) return null;
   if (inFlight) return inFlight;
 
   inFlight = requestAssertion()
@@ -192,11 +220,17 @@ export function invalidateIdentityAssertion(): void {
 
 /** Test-only: resets all module state. */
 export function resetWebTabIdentityForTests(): void {
-  sdkInit = null;
+  sdkInitCall = null;
+  sdkReady = false;
   cached = null;
   inFlight = null;
   lastFailureAt = 0;
   status = 'not_requested';
+}
+
+/** Whether the app is running inside Zoho People (the Widget SDK is present). */
+export function isZohoPeopleHost(): boolean {
+  return typeof window !== 'undefined' && typeof window.ZOHO?.embeddedApp?.init === 'function';
 }
 
 export function getIdentityStatus(): IdentityStatus {

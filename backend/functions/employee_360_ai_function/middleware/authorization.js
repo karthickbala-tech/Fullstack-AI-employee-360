@@ -5,6 +5,7 @@ const Environment = require('../config/environment');
 const Logger = require('../utils/logger');
 const { ERROR_CODES } = require('../config/constants');
 const ZohoPeopleAssertion = require('./zohoPeopleAssertion');
+const AccessScope = require('./accessScope');
 
 // Catalyst project role treated as tenant administrator (all employees).
 // Catalyst's default administrator role; confirm against the project's role list.
@@ -327,6 +328,8 @@ class AuthorizationBoundary {
     if (!email) return;
 
     const directory = await this._getEmployeeService().getLiveEmployeeDirectory(context);
+    // Kept for this request only, so chat scope and /v1/me reuse it without another Zoho call.
+    context.directory = directory;
     const matches = directory.filter(entry => (entry.email || '').trim().toLowerCase() === email);
 
     if (matches.length !== 1) {
@@ -428,7 +431,9 @@ class AuthorizationBoundary {
       allowedEmployees: organizationWide ? null : (user.allowedEmployees || []),
       canAnalyzeTeam: user.hasDirectReports === true,
       // Organization analysis comes only from the explicit organizationAccess policy.
-      canAnalyzeOrganization: user.organizationAccess === true
+      canAnalyzeOrganization: user.organizationAccess === true,
+      // What the chat may offer for @ and #: only people and departments in scope.
+      mentionable: AccessScope.mentionable(AccessScope._fromUser(user, context.directory || []))
     };
   }
 

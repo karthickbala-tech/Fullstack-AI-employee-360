@@ -1,14 +1,17 @@
-import { API_ENDPOINTS } from '../config/apiConfig';
+import { API_ENDPOINTS, ASK_TIMEOUT_MS, VOICE_TIMEOUT_MS } from '../config/apiConfig';
 import { apiRequest } from './apiClient';
 import type {
   AccessProfile,
   AskAIResponse,
+  AskMentions,
   AskHistoryTurn,
   Employee360Data,
   EmployeeDirectoryResponse,
   EmployeeInsightsResponse,
   EmployeeSummaryResponse,
   EmployeeTimelineResponse,
+  VoiceSpeech,
+  VoiceTranscription,
   ZohoConnectionStatus,
 } from '../types/employee360';
 
@@ -79,6 +82,46 @@ export const employee360Api = {
         method: 'GET',
       }
     );
+    return res.data;
+  },
+
+  /**
+   * Chat question not tied to one employee (POST /v1/ask). Mentions narrow it to
+   * people (@), departments (#) or everyone allowed (@all); the backend checks scope.
+   */
+  async askChat(
+    question: string,
+    history: AskHistoryTurn[] = [],
+    mentions: AskMentions = { employeeIds: [], departments: [], all: false },
+    /** Language the speech-to-text step heard (helps the backend translate); optional. */
+    language?: string
+  ): Promise<AskAIResponse> {
+    const res = await apiRequest<AskAIResponse>(API_ENDPOINTS.askChat(), {
+      method: 'POST',
+      body: JSON.stringify({ question: question.trim(), history, mentions, ...(language ? { language } : {}) }),
+      // text/plain keeps this a CORS "simple" request (see askEmployeeAI below).
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    }, ASK_TIMEOUT_MS);
+    return res.data;
+  },
+
+  /** Speech to text (POST /v1/voice/transcribe): base64 audio of one recording. */
+  async transcribeVoice(audio: string, mimeType: string): Promise<VoiceTranscription> {
+    const res = await apiRequest<VoiceTranscription>(API_ENDPOINTS.voiceTranscribe(), {
+      method: 'POST',
+      body: JSON.stringify({ audio, mimeType }),
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    }, VOICE_TIMEOUT_MS);
+    return res.data;
+  },
+
+  /** Text to speech (POST /v1/voice/speak): one MP3 clip of the answer. */
+  async speakText(text: string, languageCode: string): Promise<VoiceSpeech> {
+    const res = await apiRequest<VoiceSpeech>(API_ENDPOINTS.voiceSpeak(), {
+      method: 'POST',
+      body: JSON.stringify({ text, languageCode }),
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    }, VOICE_TIMEOUT_MS);
     return res.data;
   },
 

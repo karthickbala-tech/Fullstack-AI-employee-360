@@ -89,6 +89,54 @@ class Validation {
 
     return turns.filter(turn => turn.content.length > 0).slice(-ASK_HISTORY_TURNS_USED);
   }
+
+  /** POST /v1/ask: the Ask payload plus optional @/# mentions. */
+  static validateAskAllPayload(body) {
+    const { question, history } = Validation.validateAskPayload(body);
+    let language = null;
+    if (body.language !== undefined && body.language !== null) {
+      if (typeof body.language !== 'string' || !/^[a-z]{2}-IN$/.test(body.language)) {
+        throw new ValidationError("'language' must be a code such as 'hi-IN'");
+      }
+      language = body.language;
+    }
+    return { question, history, mentions: Validation.validateMentions(body.mentions), language };
+  }
+
+  /**
+   * Mentions chosen in the chat: employee IDs (@person), department names
+   * (#department) and `all` (@all). Shape only; scope is checked separately.
+   */
+  static validateMentions(raw) {
+    if (raw === undefined || raw === null) return { employeeIds: [], departments: [], all: false };
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new ValidationError("Property 'mentions' must be an object");
+    }
+    const ids = raw.employeeIds === undefined ? [] : raw.employeeIds;
+    const departments = raw.departments === undefined ? [] : raw.departments;
+    if (!Array.isArray(ids) || ids.length > MAX_MENTIONED_EMPLOYEES) {
+      throw new ValidationError(`'mentions.employeeIds' must be an array of at most ${MAX_MENTIONED_EMPLOYEES} IDs`);
+    }
+    if (!Array.isArray(departments) || departments.length > MAX_MENTIONED_DEPARTMENTS) {
+      throw new ValidationError(`'mentions.departments' must be an array of at most ${MAX_MENTIONED_DEPARTMENTS} names`);
+    }
+    if (raw.all !== undefined && typeof raw.all !== 'boolean') {
+      throw new ValidationError("'mentions.all' must be true or false");
+    }
+    return {
+      employeeIds: [...new Set(ids.map(id => Validation.validateEmployeeId(id)))],
+      departments: [...new Set(departments.map(name => {
+        if (typeof name !== 'string' || !name.trim() || name.length > 100) {
+          throw new ValidationError('Each mentioned department must be a non-empty name of at most 100 characters');
+        }
+        return name.trim();
+      }))],
+      all: raw.all === true
+    };
+  }
 }
+
+const MAX_MENTIONED_EMPLOYEES = 25;
+const MAX_MENTIONED_DEPARTMENTS = 10;
 
 module.exports = Validation;

@@ -7,6 +7,7 @@ import type {
   ZohoConnectionStatus,
 } from '../types/employee360';
 import { EmployeeAvatar } from './EmployeeAvatar';
+import type { ChatViewer } from './AIChatView';
 
 interface TopNavBarProps {
   activePage: ActivePage;
@@ -19,6 +20,8 @@ interface TopNavBarProps {
   connectionStatus: ZohoConnectionStatus | null;
   isLoadingData: boolean;
   onRefreshData: () => void;
+  /** The signed-in user, shown on the AI Chat page instead of the employee selector. */
+  viewer: ChatViewer;
 }
 
 export const TopNavBar: React.FC<TopNavBarProps> = ({
@@ -32,6 +35,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
   connectionStatus,
   isLoadingData,
   onRefreshData,
+  viewer,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -41,21 +45,30 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
     (e) => e.employeeId.toUpperCase() === selectedEmployeeId.toUpperCase()
   );
 
-  const filteredEmployees = employees.filter((emp) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      emp.employeeId.toLowerCase().includes(q) ||
-      (emp.fullName || '').toLowerCase().includes(q) ||
-      (emp.department || '').toLowerCase().includes(q) ||
-      (emp.jobTitle || '').toLowerCase().includes(q)
-    );
-  });
+  // The selector lists only employees the backend allows; the viewer's own record comes first.
+  const filteredEmployees = employees
+    .filter((emp) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        emp.employeeId.toLowerCase().includes(q) ||
+        (emp.fullName || '').toLowerCase().includes(q) ||
+        (emp.department || '').toLowerCase().includes(q) ||
+        (emp.jobTitle || '').toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => Number(b.employeeId === viewer.employeeId) - Number(a.employeeId === viewer.employeeId));
 
-  const handleCustomEmployeeSubmit = (e: React.FormEvent) => {
+  const onDashboard = activePage === 'dashboard';
+  // With only one allowed employee (the user's own record) there is nothing to choose.
+  const canChoose = employees.length > 1;
+
+  // Enter in the filter picks the first match, never a typed-in ID.
+  const handleFilterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
-    onSelectEmployee(searchQuery.trim().toUpperCase());
+    const first = filteredEmployees[0];
+    if (!first) return;
+    onSelectEmployee(first.employeeId);
     setDropdownOpen(false);
     setSearchQuery('');
   };
@@ -71,14 +84,16 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
           <span className="brand-title">AI Employee 360</span>
         </div>
 
-        {/* Employee Context Search & Selector */}
+        {/* Dashboard: employee selector (allowed employees only) */}
+        {onDashboard && (
         <div className="employee-selector-wrapper">
           <button
             type="button"
-            className="employee-selector-trigger"
-            onClick={() => setDropdownOpen((prev) => !prev)}
-            aria-expanded={dropdownOpen}
-            aria-label="Select employee context"
+            className={`employee-selector-trigger ${canChoose ? '' : 'is-static'}`}
+            onClick={() => canChoose && setDropdownOpen((prev) => !prev)}
+            aria-expanded={canChoose ? dropdownOpen : undefined}
+            aria-disabled={!canChoose}
+            aria-label={canChoose ? 'Choose the employee shown on the dashboard' : 'Your dashboard'}
           >
             <EmployeeAvatar
               employeeId={selectedEmployeeId}
@@ -92,6 +107,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
               ·
             </span>
             <span className="selector-emp-id mono-num">{selectedEmployeeId}</span>
+            {canChoose && (
             <svg
               className="selector-chevron"
               width="14"
@@ -104,11 +120,12 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
             >
               <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
+            )}
           </button>
 
-          {dropdownOpen && (
+          {dropdownOpen && canChoose && (
             <div className="employee-dropdown-menu" role="listbox">
-              <form onSubmit={handleCustomEmployeeSubmit} className="employee-search-form">
+              <form onSubmit={handleFilterSubmit} className="employee-search-form">
                 <svg
                   className="search-input-icon"
                   width="15"
@@ -124,23 +141,17 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                 <input
                   type="text"
                   className="employee-search-input"
-                  placeholder="Filter or enter Employee ID (e.g. DEMO001, HRM2)..."
+                  placeholder="Filter by name, ID or department…"
+                  aria-label="Filter employees"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                 />
-                {searchQuery.trim() && (
-                  <button type="submit" className="employee-id-go-btn">
-                    Load ID
-                  </button>
-                )}
               </form>
 
               <div className="employee-dropdown-header">
                 <span>
-                  {dataSourceMode === 'mock'
-                    ? 'Demo Employee 360 Records'
-                    : 'Live Zoho People Directory'}
+                  {dataSourceMode === 'mock' ? 'Demo employees' : 'Employees you can view'}
                 </span>
                 <span className="mono-num">{filteredEmployees.length} records</span>
               </div>
@@ -170,6 +181,9 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
                           <span className="emp-item-name">
                             {emp.fullName || 'Name Not Recorded'}
                           </span>
+                          {emp.employeeId === viewer.employeeId && (
+                            <span className="emp-item-self">My record</span>
+                          )}
                           <span className="emp-item-id mono-num">{emp.employeeId}</span>
                         </div>
                         <div className="emp-item-meta">
@@ -186,24 +200,14 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({
 
                 {filteredEmployees.length === 0 && (
                   <div className="employee-dropdown-empty">
-                    <p>No matching directory entry for &ldquo;{searchQuery}&rdquo;.</p>
-                    <button
-                      type="button"
-                      className="query-direct-btn"
-                      onClick={() => {
-                        onSelectEmployee(searchQuery.trim().toUpperCase());
-                        setDropdownOpen(false);
-                        setSearchQuery('');
-                      }}
-                    >
-                      Query Employee ID &ldquo;{searchQuery.trim().toUpperCase()}&rdquo; directly
-                    </button>
+                    <p>No employee you can view matches &ldquo;{searchQuery}&rdquo;.</p>
                   </div>
                 )}
               </div>
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* Zone 2: Centered AI / Dashboard Navigation Toggle (Primary Requirement) */}

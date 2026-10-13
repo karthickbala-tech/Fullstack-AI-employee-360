@@ -280,6 +280,15 @@ test('an employee can open only their own record', async t => {
   }
 });
 
-test('authentication switch remains off', () => {
-  assert.equal(Environment.isAuthenticationEnabled(), false);
+test('deployed settings: authentication on, organization access only by explicit employee ID', () => {
+  // Read from the source: the test baseline (helpers.js) deliberately overrides both at runtime.
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.resolve(__dirname, '../functions/employee_360_ai_function');
+  const environmentSource = fs.readFileSync(path.join(root, 'config/environment.js'), 'utf8');
+  assert.match(environmentSource, /^const AUTHENTICATION_ENABLED = true;$/m);
+  assert.match(environmentSource, /employeeIds: \[(\s*'[A-Za-z0-9_-]+',?\s*)*\]/);
+  assert.match(environmentSource, /zohoRoles: \[\]/);
+  const authorizationSource = fs.readFileSync(path.join(root, 'middleware/authorization.js'), 'utf8');
+  assert.match(authorizationSource, /^const ZOHO_ROLE_FIELD_VERIFIED = false;$/m);
 });

@@ -470,10 +470,70 @@ With authentication on, the response also has (additive):
 `displayName`, `employeeMapping` (`matched` | `not_found` | `ambiguous`
 | `no_email`, or `null` when not resolved), `allowedEmployees`
 (`[{ employeeId, fullName }]`, `null` when `scope` is `all`),
-`canAnalyzeTeam` (verified direct reports exist) and
-`canAnalyzeOrganization` (explicit `organizationAccess` policy only).
+`canAnalyzeTeam` (verified direct reports exist),
+`canAnalyzeOrganization` (explicit `organizationAccess` policy only) and
+`mentionable`: `{ employees: [{ employeeId, fullName, department }],
+departments: [...], canMentionAll, allScope }`, the people and departments
+the chat may offer for `@` and `#`. These are only people in scope:
+everyone for organization access, or self plus verified reports otherwise.
+`allScope` is `organization`, `team` or `self`, and `canMentionAll` is
+false for `self`.
 With authentication off the response is exactly the five fields above
 with `authenticationEnabled: false`.
+
+## POST `/v1/ask`
+
+A chat question that isn't tied to one selected employee. The body is
+`{ "question": string, "history"?: [...], "mentions"?: { "employeeIds":
+[...], "departments": [...], "all": boolean } }`, sent as a `text/plain`
+POST like the per-employee Ask.
+
+- **Authorization first:** every mentioned employee must be in the
+  caller's scope, every department must be one of the caller's
+  `mentionable.departments`, and `all` needs team or organization scope.
+  Anything else is HTTP 403 before any data is read. Malformed mentions
+  are HTTP 400.
+- **Who a question covers:**
+  - one mentioned person: that person (the per-employee pipeline);
+  - "my …" without a mention: the signed-in employee;
+  - no mention: everyone in scope (the organization, the team, or only
+    self for an employee without reports);
+  - `#department`, several people or `@all`: that group, always within scope.
+- **Group answers:** counts, lists and department breakdowns come from the
+  directory. Attendance, late days, leave use and tenure are ranked,
+  averaged or listed from verified per-employee records, with evidence
+  `"<employeeId>:<domain>.<field>"`. Performance and pay comparisons are
+  answered as not available.
+- **Response:** the Ask response plus `scope: { label, memberCount }` and
+  `language` (BCP-47, e.g. `hi-IN`; `en-IN` for English). `route` is
+  `group` for group answers.
+- **Languages:** the optional `language` field in the body is a hint from
+  speech-to-text. A question written in an Indian-language script is
+  translated to English once (Sarvam `mayura:v1`) for routing; the AI
+  sees the original wording too and answers in that language. Fixed
+  English replies are translated back. Typed English costs no Sarvam call.
+- **Rate limit:** 30 asks per user per minute per function instance (HTTP
+  429 with `Retry-After`).
+
+### Voice (Sarvam AI)
+
+The Sarvam key stays in the function environment (`SARVAM_API_KEY` or
+`Sarvam_API_KEY`); the browser never sees it. Both routes need the same
+sign-in as the others and are `text/plain` POSTs.
+
+- `POST /v1/voice/transcribe` with `{ "audio": base64, "mimeType":
+  "audio/webm" | "audio/ogg" | "audio/mp4" | "audio/mpeg" | "audio/wav",
+  "languageCode"?: "hi-IN" | … }` returns `{ transcript, languageCode }`.
+  The audio must be a real audio container of 1 KB–640 KB (under 30 s);
+  anything else is HTTP 400 and never reaches Sarvam. 12 per user per minute.
+- `POST /v1/voice/speak` with `{ "text": string, "languageCode": string }`
+  returns `{ audio: base64 MP3, mimeType, languageCode, cached }`. Markdown
+  is removed and the text is cut at a sentence end at about 500
+  characters. Clips are cached by text and language, and identical
+  concurrent requests share one Sarvam call; only new clips count toward
+  the limit of 15 per user per minute.
+- Sarvam errors map to 429 (usage limit), 503 (not configured or key
+  rejected) or 502; there are no automatic retries.
 
 ### Zoho People Web Tab identity
 

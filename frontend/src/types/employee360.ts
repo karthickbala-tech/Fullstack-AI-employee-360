@@ -82,6 +82,7 @@ export interface AccessProfile {
   allowedEmployees?: { employeeId: string; fullName: string | null }[] | null;
   canAnalyzeTeam?: boolean;
   canAnalyzeOrganization?: boolean;
+  mentionable?: Mentionable;
 }
 
 export interface EmployeeDirectoryResponse {
@@ -341,7 +342,22 @@ export interface AskAIRequest {
 }
 
 // How the backend produced an Ask answer (see FRONTEND_API_CONTRACT.md).
-export type AskRoute = 'conversation' | 'general' | 'deterministic' | 'organization' | 'employee';
+export type AskRoute = 'conversation' | 'general' | 'deterministic' | 'organization' | 'employee' | 'group';
+
+/** People and departments the signed-in user may mention in the chat (@ / #). */
+export interface Mentionable {
+  employees: { employeeId: string; fullName: string | null; department: string | null }[];
+  departments: string[];
+  canMentionAll: boolean;
+  allScope: 'organization' | 'team' | 'self';
+}
+
+/** Mentions sent with a chat question; the backend authorizes every one. */
+export interface AskMentions {
+  employeeIds: string[];
+  departments: string[];
+  all: boolean;
+}
 
 export interface AskAIResponse {
   answer: string;
@@ -350,6 +366,24 @@ export interface AskAIResponse {
   evidence: string[];
   limitations: string[];
   route?: AskRoute;
+  /** Who the answer covers (POST /v1/ask): a person's name, "your team", a department, ... */
+  scope?: { label: string; memberCount: number };
+  /** Language of the answer text (BCP-47, e.g. "hi-IN"); used to pick the reading voice. */
+  language?: string;
+}
+
+/** POST /v1/voice/transcribe */
+export interface VoiceTranscription {
+  transcript: string;
+  languageCode: string;
+}
+
+/** POST /v1/voice/speak: one base64 MP3 clip. */
+export interface VoiceSpeech {
+  audio: string;
+  mimeType: string;
+  languageCode: string;
+  cached?: boolean;
 }
 
 export interface ChatMessage {
@@ -358,8 +392,13 @@ export interface ChatMessage {
   timestamp: string;
   employeeId: string;
   content: string;
+  /** Language of the text (BCP-47); English when absent. */
+  language?: string;
+  /** The user spoke this question (voice input). */
+  viaVoice?: boolean;
   responseMeta?: {
     route?: AskRoute;
+    scopeLabel?: string;
     type: DataClassification;
     confidence: ConfidenceLevel;
     evidence: string[];

@@ -1,6 +1,6 @@
 import { API_TIMEOUT_MS } from '../config/apiConfig';
 import type { ApiResponseEnvelope } from '../types/employee360';
-import { getIdentityAssertion, invalidateIdentityAssertion } from '../services/webTabIdentity';
+import { getIdentityAssertion, invalidateIdentityAssertion, isZohoPeopleHost } from '../services/webTabIdentity';
 
 // Body field that carries the Zoho People identity assertion. The backend also
 // accepts the x-e360-assertion header, but a custom header makes the browser
@@ -73,22 +73,58 @@ function withBodyAssertion(options: RequestInit, assertion: string): RequestInit
   };
 }
 
+/**
+ * A short, plain-language message for showing an API failure to the user.
+ * Codes and HTTP details stay out of the chat.
+ */
+export function friendlyApiError(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (!(error instanceof ApiClientError)) return fallback;
+  if (error.code === 'RATE_LIMITED' || error.statusCode === 429) {
+    return "You're sending requests quickly. Please wait a moment and try again.";
+  }
+  switch (error.kind) {
+    case 'timeout':
+      return 'That took too long to answer. Please try again.';
+    case 'network_error':
+      return "Can't reach the Employee 360 service. Check your connection and try again.";
+    case 'unauthorized':
+      return "Couldn't confirm your Zoho People sign-in. Please reload this tab and try again.";
+    case 'forbidden':
+      return error.message || "You don't have access to that information.";
+    case 'validation_error':
+      return error.message || 'That request could not be processed.';
+    default:
+      return error.statusCode === 503
+        ? 'This service is not available right now. Please try again later.'
+        : error.message && error.statusCode && error.statusCode < 500
+          ? error.message
+          : 'Something went wrong on our side. Please try again.';
+  }
+}
+
 export async function apiRequest<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = API_TIMEOUT_MS
 ): Promise<ApiResponseEnvelope<T>> {
   // The Zoho People identity assertion, when one is available, travels in the
   // request body (see withBodyAssertion). The backend verifies it.
   const assertion = await getIdentityAssertion();
   try {
-    return await sendOnce<T>(url, options, assertion);
+    return await sendOnce<T>(url, options, assertion, timeoutMs);
   } catch (err) {
     // A rejected assertion (expired in transit, or replaced) is fetched again once;
     // the backend still decides whether the new one is valid.
     if (assertion && err instanceof ApiClientError && err.code === INVALID_ASSERTION_CODE) {
       invalidateIdentityAssertion();
-      const fresh = await getIdentityAssertion();
-      if (fresh && fresh !== assertion) return sendOnce<T>(url, options, fresh);
+      const fresh = await getIdentityAssertion({ force: true });
+      if (fresh && fresh !== assertion) return sendOnce<T>(url, options, fresh, timeoutMs);
+    }
+    // Sent without identity inside Zoho People (the SDK or identity function was
+    // briefly unavailable): get one now and retry once. Outside Zoho, nothing to retry.
+    if (!assertion && err instanceof ApiClientError && err.statusCode === 401 && isZohoPeopleHost()) {
+      const fresh = await getIdentityAssertion({ force: true });
+      if (fresh) return sendOnce<T>(url, options, fresh, timeoutMs);
     }
     throw err;
   }
@@ -97,12 +133,13 @@ export async function apiRequest<T>(
 async function sendOnce<T>(
   url: string,
   options: RequestInit,
-  assertion: string | null
+  assertion: string | null,
+  timeoutMs: number
 ): Promise<ApiResponseEnvelope<T>> {
   const request = assertion ? withBodyAssertion(options, assertion) : options;
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {

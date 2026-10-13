@@ -10,11 +10,20 @@ const {
   RateLimitError
 } = require('../../utils/errors');
 const Logger = require('../../utils/logger');
+const Environment = require('../../config/environment');
 
 // Forms API getRecords: `sIndex` starts at 1, `limit` max 200
 // (https://www.zoho.com/people/api/bulk-records.html).
 const DIRECTORY_PAGE_SIZE = 200;
 const DIRECTORY_MAX_PAGES = 50;
+
+// The directory is the same for every caller (scope is applied afterwards), so
+// one function instance reuses it briefly, and concurrent requests share a load.
+const directoryCache = { value: null, loadedAt: 0, expiresAt: 0, pending: null };
+// When Zoho fails, a directory this recent is used instead, so a brief Zoho
+// outage does not sign every user out. Scope rules still apply to it.
+const DIRECTORY_STALE_MAX_MS = 10 * 60 * 1000;
+const copyDirectory = directory => directory.map(entry => ({ ...entry }));
 
 function normalizeId(value) {
   if (value === null || value === undefined) return null;
@@ -296,6 +305,37 @@ class ZohoPeopleEmployeeService {
    * Records without a stable EmployeeID and record ID are dropped.
    */
   async getLiveEmployeeDirectory(context = null, options = {}) {
+    const ttlMs = Environment.getDirectoryCacheTtlMs();
+    if (options.pageSize || !(ttlMs > 0)) return this._loadLiveEmployeeDirectory(context, options);
+    if (directoryCache.value && Date.now() < directoryCache.expiresAt) return copyDirectory(directoryCache.value);
+    if (!directoryCache.pending) {
+      directoryCache.pending = this._loadLiveEmployeeDirectory(context, options)
+        .then(directory => {
+          directoryCache.value = directory;
+          directoryCache.loadedAt = Date.now();
+          directoryCache.expiresAt = Date.now() + ttlMs;
+          return directory;
+        })
+        .catch(err => {
+          if (directoryCache.value && Date.now() - directoryCache.loadedAt < DIRECTORY_STALE_MAX_MS) {
+            Logger.warn('Zoho directory refresh failed; using the last good copy', { ageMs: Date.now() - directoryCache.loadedAt, error: err.message });
+            return directoryCache.value;
+          }
+          throw err;
+        })
+        .finally(() => { directoryCache.pending = null; });
+    }
+    return copyDirectory(await directoryCache.pending);
+  }
+
+  /** Drops the cached directory (tests, or after a known change). */
+  static clearDirectoryCache() {
+    directoryCache.value = null;
+    directoryCache.loadedAt = 0;
+    directoryCache.expiresAt = 0;
+  }
+
+  async _loadLiveEmployeeDirectory(context = null, options = {}) {
     const records = await this._listAllEmployeeRecords(context, options.pageSize || DIRECTORY_PAGE_SIZE);
     const directory = [];
     let dropped = 0;

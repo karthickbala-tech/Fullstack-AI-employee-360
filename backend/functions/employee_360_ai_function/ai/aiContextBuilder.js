@@ -1,5 +1,7 @@
 'use strict';
 
+const EvidenceService = require('../intelligence/evidenceService');
+
 // Optional context sections and the words that ask for them. The profile and
 // employment sections are always sent: they are small and identify the subject.
 const DOMAIN_KEYWORDS = {
@@ -89,10 +91,20 @@ class AIContextBuilder {
     }
 
     if (domains.has('leave')) {
+      const balances = EvidenceService.recordedLeaveBalances(canonical);
       context.leave = {
         utilization:
           canonical.deterministicMetrics?.leaveUtilization?.formatted ||
-          'Unknown'
+          'Unknown',
+        // Per leave type: days entitled, taken and remaining (evidence leave.balance)
+        balances: balances.length > 0
+          ? balances.map(row => ({
+            type: row.type,
+            entitled: Number.isFinite(row.entitled) ? row.entitled : 'Unknown',
+            taken: Number.isFinite(row.taken) ? row.taken : 'Unknown',
+            remaining: Number.isFinite(row.balance) ? row.balance : 'Unknown'
+          }))
+          : 'Unknown'
       };
     }
 

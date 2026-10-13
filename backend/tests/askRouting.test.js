@@ -56,7 +56,7 @@ function stubProvider(reply) {
   };
 }
 
-const OUT_OF_SCOPE = /^Sorry, I can only help with Employee 360 questions/;
+const OUT_OF_SCOPE = /^Sorry, I don't have the relevant data to answer that question. I can help with Employee 360 questions/;
 
 test('friendly small talk is answered and carries no Employee 360 classification', async t => {
   silenceLogs(t);

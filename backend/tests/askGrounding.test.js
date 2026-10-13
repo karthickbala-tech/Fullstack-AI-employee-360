@@ -138,3 +138,15 @@ test('a claim about an unevaluated field falls back and names what is not record
 test('Ask prefers the fast model by default', () => {
   assert.equal(new AskGenerator().provider.model, 'gemini-3.1-flash-lite');
 });
+
+test('leave balances per type reach the AI with their own evidence; none recorded means none sent', () => {
+  const withLeave = buildCanonical({ leave: [{ Name: 'Casual Leave', PermittedCount: 10, AvailedCount: 4, BalanceCount: 6 }] });
+  assert.ok(refs(withLeave).includes('leave.balance'));
+  const context = AIContextBuilder.buildContext(withLeave, { domains: new Set(['leave']) });
+  assert.deepEqual(context.leave.balances, [{ type: 'Casual Leave', entitled: 10, taken: 4, remaining: 6 }]);
+  assert.ok(context.evidence.some(e => e.domain === 'leave' && e.field === 'balance'));
+
+  const without = buildCanonical();
+  assert.ok(!refs(without).includes('leave.balance'));
+  assert.equal(AIContextBuilder.buildContext(without, { domains: new Set(['leave']) }).leave.balances, 'Unknown');
+});

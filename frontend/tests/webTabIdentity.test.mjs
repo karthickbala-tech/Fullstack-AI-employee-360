@@ -129,3 +129,50 @@ test('invalidation forces a new assertion; a failure is not retried immediately'
   await identity.getIdentityAssertion();
   assert.equal(calls.invoke.length, 4);
 });
+
+test('a slow SDK start is waited for again on the next request, not remembered as unavailable', async (t) => {
+  fresh(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finishInit;
+  const calls = installSdk({
+    init: () => new Promise((resolve) => { finishInit = resolve; }),
+    invoke: async () => ({ assertion: fakeAssertion() }),
+  });
+  const first = identity.getIdentityAssertion();
+  await Promise.resolve();
+  t.mock.timers.tick(8000);
+  assert.equal(await first, null, 'the first request gives up after 8 s');
+  finishInit();
+  identity.invalidateIdentityAssertion();
+  assert.ok(await identity.getIdentityAssertion(), 'once Zoho finishes starting, identity works');
+  assert.equal(calls.init, 1, 'init() itself is still called only once');
+});
+
+test('a thrown identity call is retried once; a function that answers without an assertion is not', async (t) => {
+  fresh(t);
+  const calls = installSdk({
+    invoke: async (options, n) => {
+      if (n === 1) throw new Error('network blip');
+      return { assertion: fakeAssertion() };
+    },
+  });
+  assert.ok(await identity.getIdentityAssertion());
+  assert.equal(calls.invoke.length, 2);
+
+  identity.resetWebTabIdentityForTests();
+  const noAssertion = installSdk({ invoke: async () => ({ Status: 'Success' }) });
+  assert.equal(await identity.getIdentityAssertion(), null);
+  assert.equal(noAssertion.invoke.length, 1);
+});
+
+test('after a failure, identity is tried again within seconds, and at once when forced', async (t) => {
+  fresh(t);
+  t.mock.timers.enable({ apis: ['Date'], now: 1791456000000 });
+  let fail = true;
+  const calls = installSdk({ invoke: async () => (fail ? { Status: 'Success' } : { assertion: fakeAssertion() }) });
+  assert.equal(await identity.getIdentityAssertion(), null);
+  fail = false;
+  assert.equal(await identity.getIdentityAssertion(), null, 'brief back-off');
+  assert.ok(await identity.getIdentityAssertion({ force: true }), 'forced: no back-off');
+  assert.equal(calls.invoke.length, 2);
+});

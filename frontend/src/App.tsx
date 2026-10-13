@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiClientError } from './api/apiClient';
+import { ApiClientError, friendlyApiError } from './api/apiClient';
 import { AIChatView } from './components/AIChatView';
 import { DashboardView } from './components/DashboardView';
 import { TopNavBar } from './components/TopNavBar';
@@ -13,15 +13,20 @@ import {
   MOCK_ZOHO_STATUS,
 } from './mock/employee360MockData';
 import {
-  askEmployeeQuestion,
+  askChatQuestion,
   fetchDirectoryAndStatus,
   fetchEmployee360Bundle,
   describeAccessFailure,
   fetchLiveAccess,
+  getEmployee360Provider,
 } from './services/employee360DataProvider';
 import { initWebTabSdk } from './services/webTabIdentity';
+import { EMPTY_MENTIONS, buildMentionable } from './services/mentions';
+import type { ChatViewer } from './components/AIChatView';
 import type {
   ActivePage,
+  AskMentions,
+  Mentionable,
   AskHistoryTurn,
   ChatMessage,
   ConversationThread,
@@ -34,6 +39,17 @@ import type {
   ZohoConnectionStatus,
 } from './types/employee360';
 import './App.css';
+
+// One conversation list per signed-in user: the chat is not tied to the Dashboard employee.
+const CHAT_KEY = 'chat';
+const DEMO_VIEWER: ChatViewer = { employeeId: 'DEMO001', name: 'Sarah Anderson', detail: 'Demo organization' };
+const LOADING_VIEWER: ChatViewer = { employeeId: null, name: 'Checking your access…', detail: 'Live Zoho People' };
+
+const SCOPE_DETAIL: Record<Mentionable['allScope'], string> = {
+  organization: 'Organization access',
+  team: 'You and your team',
+  self: 'Your own record',
+};
 
 export function App() {
   // Primary product experience is AI ('ai' is default active page)
@@ -52,6 +68,17 @@ export function App() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(
     DEFAULT_DATA_SOURCE_MODE === 'mock' ? 'DEMO001' : ''
   );
+
+  // The signed-in user (chat sidebar) and whom they may mention (@ / #) in the chat
+  const [viewer, setViewer] = useState<ChatViewer>(
+    DEFAULT_DATA_SOURCE_MODE === 'mock' ? DEMO_VIEWER : LOADING_VIEWER
+  );
+  const [mentionable, setMentionable] = useState<Mentionable | null>(
+    DEFAULT_DATA_SOURCE_MODE === 'mock' ? buildMentionable(MOCK_EMPLOYEES_DIRECTORY, 'organization') : null
+  );
+  // The viewer's own Employee 360 for the chat's "Signed in as" card and grounded-context
+  // panel, loaded on its own so it does not depend on whom the Dashboard is showing.
+  const [viewerRecord, setViewerRecord] = useState<{ id: string; mode: DataSourceMode; data: Employee360Data } | null>(null);
 
   // Employee 360 canonical bundle state (pre-seeded with DEMO001 when in mock mode)
   const [canonical, setCanonical] = useState<Employee360Data | null>(
@@ -77,28 +104,22 @@ export function App() {
   );
   const [bundleError, setBundleError] = useState<string | null>(null);
 
-  // Conversational AI state per employee. Each demo employee opens on a fresh empty chat
-  // (so the welcome banner + prompts show first); the seeded example conversations stay in history.
-  // No active thread is preselected, so each employee falls back to that first (empty) thread.
+  // Conversations: one list for the signed-in user. It opens on a fresh empty chat (so the
+  // welcome banner and prompts show first); the seeded demo conversations stay in history.
   const [threadsByEmployee, setThreadsByEmployee] = useState<
     Record<string, ConversationThread[]>
-  >(() =>
-    Object.fromEntries(
-      Object.entries(MOCK_INITIAL_CONVERSATIONS).map(([empId, threads]) => [
-        empId,
-        [
-          {
-            id: `conv_${empId}_new`,
-            employeeId: empId,
-            title: 'New Chat',
-            updatedAt: new Date().toISOString(),
-            messages: [],
-          },
-          ...threads,
-        ],
-      ])
-    )
-  );
+  >(() => ({
+    [CHAT_KEY]: [
+      {
+        id: `conv_${CHAT_KEY}_new`,
+        employeeId: CHAT_KEY,
+        title: 'New Chat',
+        updatedAt: new Date().toISOString(),
+        messages: [],
+      },
+      ...(MOCK_INITIAL_CONVERSATIONS.DEMO001 || []),
+    ],
+  }));
   const [activeThreadIdByEmployee, setActiveThreadIdByEmployee] = useState<
     Record<string, string>
   >({});
@@ -107,6 +128,8 @@ export function App() {
   // Synchronous in-flight guard: `isAsking` state only updates on the next render, and the
   // dashboard ask buttons do not check it, so this ensures one /ask POST at a time.
   const askInFlightRef = useRef<boolean>(false);
+  // The answer to a spoken question is read aloud once; the chat clears this after playing it
+  const [autoSpeakMessageId, setAutoSpeakMessageId] = useState<string | null>(null);
 
   // Every page switch (AI Chat ↔ Dashboard) starts at the top instead of inheriting the
   // previous page's window scroll position
@@ -127,8 +150,26 @@ export function App() {
     // the Web Tab opens on the caller's own record when the backend identifies one.
     async function syncLiveAccess() {
       try {
-        const { employees: allowed, defaultEmployeeId, status, notice } = await fetchLiveAccess();
+        const { access, state, employees: allowed, defaultEmployeeId, status, notice } = await fetchLiveAccess();
         if (cancelled) return;
+        // Whom the chat may mention: the backend's list when signed in; in Development
+        // without sign-in, everyone (every route is unrestricted there too).
+        const allScope: Mentionable['allScope'] =
+          state === 'development' || access.scope === 'all'
+            ? 'organization'
+            : access.canAnalyzeTeam
+              ? 'team'
+              : 'self';
+        setMentionable(access.mentionable || buildMentionable(allowed, allScope));
+        if (state === 'development') {
+          setViewer({ employeeId: null, name: 'Development', detail: 'Sign-in not verified · all employees' });
+        } else {
+          setViewer({
+            employeeId: access.employeeId,
+            name: access.displayName || access.email || 'Signed-in user',
+            detail: access.employeeId ? SCOPE_DETAIL[allScope] : 'No matching employee record',
+          });
+        }
         setConnectionStatus(status ? { ...status, message: notice || status.message } : null);
         setEmployees(allowed);
         const nextId = allowed.some((e) => e.employeeId === defaultEmployeeId)
@@ -157,6 +198,8 @@ export function App() {
         });
         setEmployees([]);
         setSelectedEmployeeId('');
+        setViewer({ employeeId: null, name: 'Not signed in', detail: 'Identity could not be verified' });
+        setMentionable(null);
         setIsLoadingBundle(false);
         setBundleError(message);
         setAskError(message);
@@ -245,6 +288,33 @@ export function App() {
     };
   }, [selectedEmployeeId, dataSourceMode]);
 
+  // Load the viewer's own record when the Dashboard is showing someone else (one /360
+  // call: no summary or insights, so no AI cost).
+  useEffect(() => {
+    const id = viewer.employeeId;
+    if (!id || id === selectedEmployeeId) return;
+    if (viewerRecord && viewerRecord.id === id && viewerRecord.mode === dataSourceMode) return;
+    let cancelled = false;
+    getEmployee360Provider(dataSourceMode)
+      .getEmployee360(id)
+      .then((data) => {
+        if (!cancelled) setViewerRecord({ id, mode: dataSourceMode, data });
+      })
+      .catch(() => {
+        // The card shows "Not loaded"; the chat itself does not depend on this record.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewer.employeeId, selectedEmployeeId, dataSourceMode, viewerRecord]);
+
+  const viewerCanonical: Employee360Data | null =
+    viewer.employeeId && viewer.employeeId === selectedEmployeeId
+      ? canonical
+      : viewerRecord && viewerRecord.id === viewer.employeeId && viewerRecord.mode === dataSourceMode
+        ? viewerRecord.data
+        : null;
+
   // Manual refresh handler triggered by user click
   const handleManualRefresh = useCallback(async () => {
     if (!selectedEmployeeId.trim()) return;
@@ -274,33 +344,33 @@ export function App() {
     }
   }, [selectedEmployeeId, dataSourceMode]);
 
-  // Ensure an initial thread shell exists for any newly selected employee
+  // The chat thread list (one per signed-in user)
   const currentThreads: ConversationThread[] =
-    threadsByEmployee[selectedEmployeeId] || [
+    threadsByEmployee[CHAT_KEY] || [
       {
-        id: `conv_${selectedEmployeeId}_default`,
-        employeeId: selectedEmployeeId,
-        title: `Employee 360 Chat — ${selectedEmployeeId}`,
+        id: `conv_${CHAT_KEY}_default`,
+        employeeId: CHAT_KEY,
+        title: 'New Chat',
         updatedAt: new Date().toISOString(),
         messages: [],
       },
     ];
 
   const activeThreadId =
-    activeThreadIdByEmployee[selectedEmployeeId] || currentThreads[0].id;
+    activeThreadIdByEmployee[CHAT_KEY] || currentThreads[0].id;
 
   const handleSelectThread = (threadId: string) => {
     setActiveThreadIdByEmployee((prev) => ({
       ...prev,
-      [selectedEmployeeId]: threadId,
+      [CHAT_KEY]: threadId,
     }));
   };
 
   const handleNewThread = () => {
-    const newId = `conv_${selectedEmployeeId}_${Date.now()}`;
+    const newId = `conv_${CHAT_KEY}_${Date.now()}`;
     const newThread: ConversationThread = {
       id: newId,
-      employeeId: selectedEmployeeId,
+      employeeId: CHAT_KEY,
       title: `New Analysis · ${new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -311,37 +381,37 @@ export function App() {
 
     setThreadsByEmployee((prev) => ({
       ...prev,
-      [selectedEmployeeId]: [newThread, ...(prev[selectedEmployeeId] || [])],
+      [CHAT_KEY]: [newThread, ...(prev[CHAT_KEY] || [])],
     }));
     setActiveThreadIdByEmployee((prev) => ({
       ...prev,
-      [selectedEmployeeId]: newId,
+      [CHAT_KEY]: newId,
     }));
     setAskError(null);
   };
 
   const handleClearCurrentThread = () => {
     setThreadsByEmployee((prev) => {
-      const existing = prev[selectedEmployeeId] || currentThreads;
+      const existing = prev[CHAT_KEY] || currentThreads;
       const updated = existing.map((t) =>
         t.id === activeThreadId ? { ...t, messages: [] } : t
       );
       return {
         ...prev,
-        [selectedEmployeeId]: updated,
+        [CHAT_KEY]: updated,
       };
     });
     setAskError(null);
   };
 
   const handleSendQuestion = useCallback(
-    async (question: string) => {
+    async (
+      question: string,
+      mentions: AskMentions = EMPTY_MENTIONS,
+      options: { language?: string; viaVoice?: boolean } = {}
+    ) => {
       const cleanQuestion = question.trim();
       if (!cleanQuestion || askInFlightRef.current) return;
-      if (!selectedEmployeeId.trim()) {
-        setAskError('No employee is available for your access, so Ask AI cannot answer yet.');
-        return;
-      }
 
       askInFlightRef.current = true;
       setAskError(null);
@@ -350,7 +420,7 @@ export function App() {
       // Recent turns of this thread let the backend resolve follow-ups
       // ("what about last month?"); the backend bounds and validates them.
       const priorTurns: AskHistoryTurn[] = (
-        (threadsByEmployee[selectedEmployeeId] || []).find((thread) => thread.id === activeThreadId)
+        (threadsByEmployee[CHAT_KEY] || []).find((thread) => thread.id === activeThreadId)
           ?.messages || []
       )
         .slice(-6)
@@ -360,16 +430,18 @@ export function App() {
         id: `msg_u_${Date.now()}`,
         role: 'user',
         timestamp: new Date().toISOString(),
-        employeeId: selectedEmployeeId,
+        employeeId: CHAT_KEY,
         content: cleanQuestion,
+        ...(options.language ? { language: options.language } : {}),
+        ...(options.viaVoice ? { viaVoice: true } : {}),
       };
 
       // Append user question immediately
       setThreadsByEmployee((prev) => {
-        const list = prev[selectedEmployeeId] || [
+        const list = prev[CHAT_KEY] || [
           {
             id: activeThreadId,
-            employeeId: selectedEmployeeId,
+            employeeId: CHAT_KEY,
             title: cleanQuestion.slice(0, 42),
             updatedAt: new Date().toISOString(),
             messages: [],
@@ -392,26 +464,29 @@ export function App() {
 
         return {
           ...prev,
-          [selectedEmployeeId]: updatedList,
+          [CHAT_KEY]: updatedList,
         };
       });
 
       try {
-        const aiResult = await askEmployeeQuestion(
-          selectedEmployeeId,
+        const aiResult = await askChatQuestion(
           cleanQuestion,
           dataSourceMode,
-          priorTurns
+          priorTurns,
+          mentions,
+          options.language
         );
 
         const assistantMsg: ChatMessage = {
           id: `msg_a_${Date.now()}`,
           role: 'assistant',
           timestamp: new Date().toISOString(),
-          employeeId: selectedEmployeeId,
+          employeeId: CHAT_KEY,
           content: aiResult.answer,
+          ...(aiResult.language ? { language: aiResult.language } : {}),
           responseMeta: {
             route: aiResult.route,
+            scopeLabel: aiResult.scope?.label,
             type: aiResult.type,
             confidence: aiResult.confidence,
             evidence: aiResult.evidence || [],
@@ -420,10 +495,10 @@ export function App() {
         };
 
         setThreadsByEmployee((prev) => {
-          const list = prev[selectedEmployeeId] || [];
+          const list = prev[CHAT_KEY] || [];
           return {
             ...prev,
-            [selectedEmployeeId]: list.map((thread) =>
+            [CHAT_KEY]: list.map((thread) =>
               thread.id === activeThreadId
                 ? {
                     ...thread,
@@ -434,18 +509,15 @@ export function App() {
             ),
           };
         });
+        if (options.viaVoice) setAutoSpeakMessageId(assistantMsg.id);
       } catch (err) {
-        const message =
-          err instanceof ApiClientError
-            ? `[${err.code || err.kind.toUpperCase()}] ${err.message}`
-            : 'Unable to complete Ask AI request against the backend.';
-        setAskError(message);
+        setAskError(friendlyApiError(err, "Sorry, I couldn't get an answer just now. Please try again."));
       } finally {
         askInFlightRef.current = false;
         setIsAsking(false);
       }
     },
-    [selectedEmployeeId, activeThreadId, dataSourceMode, threadsByEmployee]
+    [activeThreadId, dataSourceMode, threadsByEmployee]
   );
 
   const handleSelectEmployee = (empId: string) => {
@@ -464,20 +536,33 @@ export function App() {
     if (nextMode === 'mock') {
       setEmployees(MOCK_EMPLOYEES_DIRECTORY);
       setSelectedEmployeeId('DEMO001');
+      setViewer(DEMO_VIEWER);
+      setMentionable(buildMentionable(MOCK_EMPLOYEES_DIRECTORY, 'organization'));
     } else {
-      // The live employee is chosen from GET /v1/me, never assumed.
+      // The live employee, viewer and mention lists come from GET /v1/me, never assumed.
       setEmployees([]);
       setSelectedEmployeeId('');
+      setViewer(LOADING_VIEWER);
+      setMentionable(null);
     }
   };
 
+  // Dashboard questions are about the employee shown there: an @mention unless it is the viewer.
   const handleAskFromDashboard = (promptText: string) => {
     setActivePage('ai');
-    void handleSendQuestion(promptText);
+    const shown = employees.find((e) => e.employeeId === selectedEmployeeId);
+    if (!selectedEmployeeId || selectedEmployeeId === viewer.employeeId || !shown) {
+      void handleSendQuestion(promptText);
+      return;
+    }
+    void handleSendQuestion(`@${shown.fullName || shown.employeeId} ${promptText}`, {
+      ...EMPTY_MENTIONS,
+      employeeIds: [selectedEmployeeId],
+    });
   };
 
   return (
-    <div className="app-viewport-frame">
+    <div className={`app-viewport-frame ${activePage === 'ai' ? 'is-ai-page' : 'is-dashboard-page'}`}>
       <TopNavBar
         activePage={activePage}
         onSelectPage={setActivePage}
@@ -489,18 +574,22 @@ export function App() {
         connectionStatus={connectionStatus}
         isLoadingData={isLoadingBundle}
         onRefreshData={() => void handleManualRefresh()}
+        viewer={viewer}
       />
 
       {activePage === 'ai' ? (
         <AIChatView
-          employeeId={selectedEmployeeId}
-          canonical={canonical}
+          viewer={viewer}
+          canonical={viewerCanonical}
+          mentionable={mentionable}
           threads={currentThreads}
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
           onNewThread={handleNewThread}
           onClearCurrentThread={handleClearCurrentThread}
           onSendQuestion={handleSendQuestion}
+          autoSpeakMessageId={autoSpeakMessageId}
+          onAutoSpeakHandled={() => setAutoSpeakMessageId(null)}
           isAsking={isAsking}
           askError={askError}
           onClearAskError={() => setAskError(null)}

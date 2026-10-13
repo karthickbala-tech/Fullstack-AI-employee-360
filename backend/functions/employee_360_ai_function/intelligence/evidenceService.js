@@ -4,6 +4,13 @@ const EvidenceItem = require('../models/evidenceModel');
 const { DATA_CLASSIFICATION } = require('../config/constants');
 
 class EvidenceService {
+  /** Leave types with at least one recorded number; others carry no claim. */
+  static recordedLeaveBalances(canonical) {
+    const rows = Array.isArray(canonical?.leave?.balance) ? canonical.leave.balance : [];
+    return rows.filter(row => row && typeof row.type === 'string' && row.type.trim() &&
+      [row.entitled, row.taken, row.balance].some(Number.isFinite));
+  }
+
   static extractEvidence(canonical, lifecycleData = {}) {
     const evidenceList = [];
 
@@ -83,6 +90,22 @@ class EvidenceService {
       }).toJSON());
 
       evidenceList[evidenceList.length - 1].value = item.metric.formatted;
+    }
+
+    // Per-type leave balances as Zoho People reports them (entitled, taken, left).
+    const leaveBalances = EvidenceService.recordedLeaveBalances(canonical);
+    if (leaveBalances.length > 0) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'leave',
+        field: 'balance',
+        source: 'Zoho People leave balances',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Leave entitled, taken and remaining per leave type, directly obtained from Zoho People.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = leaveBalances.length;
     }
 
     // Source values that trends are derived from.

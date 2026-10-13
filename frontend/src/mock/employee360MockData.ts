@@ -1526,4 +1526,62 @@ export const employee360MockService = {
     const cleanId = employeeId.trim().toUpperCase();
     return generateMockAskResponse(cleanId, question);
   },
+
+  /** Demo version of POST /v1/ask: the signed-in demo user is DEMO001. */
+  async askChat(
+    question: string,
+    // Same signature as the live API; the demo answers ignore conversation history.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _history: unknown[] = [],
+    mentions: { employeeIds: string[]; departments: string[]; all: boolean } = {
+      employeeIds: [],
+      departments: [],
+      all: false,
+    }
+  ): Promise<AskAIResponse> {
+    const plain = question.replace(/(^|\s)[@#](?=\S)/g, '$1').trim();
+    if (mentions.employeeIds.length === 1 && !mentions.all && mentions.departments.length === 0) {
+      const target = MOCK_EMPLOYEES_DIRECTORY.find((e) => e.employeeId === mentions.employeeIds[0]);
+      return {
+        ...generateMockAskResponse(mentions.employeeIds[0], plain),
+        scope: { label: target?.fullName || mentions.employeeIds[0], memberCount: 1 },
+      };
+    }
+    const groupQuestion =
+      mentions.all ||
+      mentions.departments.length > 0 ||
+      mentions.employeeIds.length > 1 ||
+      /\b(how many|headcount|employees|users|people|staff|team|department|list|who)\b/i.test(plain);
+    if (!groupQuestion) {
+      return { ...generateMockAskResponse('DEMO001', plain), scope: { label: 'Sarah Anderson', memberCount: 1 } };
+    }
+    const departments = new Set(mentions.departments.map((d) => d.toLowerCase()));
+    const ids = new Set(mentions.employeeIds);
+    const members =
+      departments.size > 0 || ids.size > 0
+        ? MOCK_EMPLOYEES_DIRECTORY.filter(
+            (e) => ids.has(e.employeeId) || departments.has((e.department || '').toLowerCase())
+          )
+        : MOCK_EMPLOYEES_DIRECTORY;
+    // Same wording as the live backend (AccessScope.label)
+    const label =
+      ids.size > 0
+        ? 'the selected employees'
+        : mentions.departments.length > 0
+          ? mentions.departments.join(' and ')
+          : 'the demo organization';
+    const active = members.filter((e) => (e.status || '').toLowerCase() === 'active');
+    const lines = members.map(
+      (e) => `- **${e.fullName} (${e.employeeId})** · ${e.department || 'Department not recorded'} · ${e.status || 'Unknown'}`
+    );
+    return {
+      answer: [`**${members.length} employees** in ${label} (**${active.length} active**):`, ...lines].join('\n'),
+      type: 'Fact',
+      confidence: 'high',
+      evidence: ['directory.employmentStatus', 'directory.department'],
+      limitations: ['Demo dataset: answers come from the frontend demo records, not Zoho People.'],
+      route: 'group',
+      scope: { label, memberCount: members.length },
+    };
+  },
 };

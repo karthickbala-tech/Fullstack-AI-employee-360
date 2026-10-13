@@ -5,6 +5,7 @@ import { describeIdentityStatus } from './webTabIdentity';
 import type {
   AccessProfile,
   AskAIResponse,
+  AskMentions,
   AskHistoryTurn,
   DataSourceMode,
   Employee360Data,
@@ -13,6 +14,8 @@ import type {
   EmployeeInsightsResponse,
   EmployeeSummaryResponse,
   EmployeeTimelineResponse,
+  VoiceSpeech,
+  VoiceTranscription,
   ZohoConnectionStatus,
 } from '../types/employee360';
 
@@ -205,6 +208,18 @@ export function describeAccessFailure(err: unknown): { state: LiveAccessFailure;
   return { state: 'backend_error', message: 'Unable to determine your Employee 360 access.' };
 }
 
+/** Chat question (any scope the user may see); Demo mode answers from the demo dataset. */
+export async function askChatQuestion(
+  question: string,
+  mode: DataSourceMode,
+  history: AskHistoryTurn[] = [],
+  mentions: AskMentions = { employeeIds: [], departments: [], all: false },
+  language?: string
+): Promise<AskAIResponse> {
+  if (mode === 'live') return employee360Api.askChat(question, history, mentions, language);
+  return employee360MockService.askChat(question, history, mentions);
+}
+
 export async function askEmployeeQuestion(
   employeeId: string,
   question: string,
@@ -213,4 +228,16 @@ export async function askEmployeeQuestion(
 ): Promise<AskAIResponse> {
   const provider = getEmployee360Provider(mode);
   return provider.askEmployeeAI(employeeId, question, history);
+}
+
+/**
+ * Voice always uses the backend (the Sarvam key never reaches the browser), in
+ * Demo mode too: speech holds no employee data.
+ */
+export async function transcribeSpeech(audioBase64: string, mimeType: string): Promise<VoiceTranscription> {
+  return employee360Api.transcribeVoice(audioBase64, mimeType);
+}
+
+export async function synthesizeSpeech(text: string, languageCode: string): Promise<VoiceSpeech> {
+  return employee360Api.speakText(text, languageCode);
 }

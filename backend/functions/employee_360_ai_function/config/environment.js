@@ -3,9 +3,10 @@
 const { ERROR_CODES } = require('./constants');
 const { AppError } = require('../utils/errors');
 
-// Development Web Tab testing runs without Catalyst sign-in. Set to true before
-// production (see Environment.isAuthenticationEnabled).
-const AUTHENTICATION_ENABLED = false;
+// Every non-public request must carry a verified identity: a Zoho People Web Tab
+// assertion or a Catalyst session (see Environment.isAuthenticationEnabled).
+// Enabled on Development 2026-10-12 after the Admin identity check passed.
+const AUTHENTICATION_ENABLED = true;
 
 class Environment {
   static getServiceConfig() {
@@ -49,7 +50,8 @@ class Environment {
       // zohoRoles is inactive until the Zoho Role field is verified in the
       // directory records (see AuthorizationBoundary.ZOHO_ROLE_FIELD_VERIFIED).
       organizationAccess: {
-        employeeIds: [],
+        // OWN01: the portal administrator's own employee record (granted 2026-10-12).
+        employeeIds: ['OWN01'],
         zohoRoles: []
       }
     };
@@ -72,6 +74,38 @@ class Environment {
    */
   static isIdentityDiagnosticsEnabled() {
     return process.env.E360_IDENTITY_DIAGNOSTICS === 'enabled';
+  }
+
+  /**
+   * Sarvam AI key for voice (speech-to-text, text-to-speech) and translation.
+   * Read from the function environment only; it is never sent to the browser.
+   * Both spellings are accepted (the Development config uses "Sarvam_API_KEY").
+   */
+  static getSarvamApiKey() {
+    const key = process.env.SARVAM_API_KEY || process.env.Sarvam_API_KEY || '';
+    return key.trim() || null;
+  }
+
+  /**
+   * How long one function instance reuses the Zoho People employee directory
+   * (every authenticated request needs it). Short, so status or reporting
+   * changes show within a minute. 0 turns the cache off.
+   */
+  static getDirectoryCacheTtlMs() {
+    return 60 * 1000;
+  }
+
+  /**
+   * Per-user request limits for one function instance, as [max, windowMs].
+   * They protect the free-tier Sarvam and Gemini quotas from runaway clients
+   * (stuck buttons, retry loops); normal use stays far below them.
+   */
+  static getRateLimits() {
+    return {
+      ask: [30, 60 * 1000],
+      transcribe: [12, 60 * 1000],
+      speak: [15, 60 * 1000]
+    };
   }
 
   /**

@@ -785,9 +785,8 @@
 }
 
 .ai-sidebar-threads {
-  flex: 1;
-  min-height: 80px;
-  overflow-y: auto;
+  /* No scroll of its own: the sidebar is the one scroll area (no nested scrollbars) */
+  flex: 0 0 auto;
 }
 
 .thread-list {
@@ -937,11 +936,29 @@
 .subject-card-facts {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  padding-top: 6px;
+  gap: 6px;
+  margin: 0;
+  padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.subject-card-facts > div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+
+.subject-card-facts dt {
+  color: var(--text-muted);
+}
+
+.subject-card-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .subject-inspect-btn {
@@ -998,6 +1015,117 @@
   font-weight: 600;
 }
 
+/* Dashboard selector with a single allowed employee: shown, not choosable */
+.employee-selector-trigger.is-static {
+  cursor: default;
+}
+
+.employee-selector-trigger.is-static:hover {
+  border-color: var(--border-subtle);
+  background: var(--bg-subtle);
+}
+
+.emp-item-self {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Chat question box with @ / # suggestions */
+.mention-input {
+  position: relative;
+}
+
+.mention-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 35;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-popover);
+}
+
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mention-option.is-active {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.mention-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--accent-primary);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.mention-option-icon.is-department {
+  color: #7c3aed;
+}
+
+.mention-option-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mention-option-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mention-option-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-kbd {
+  padding: 0 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--bg-subtle);
+  font-family: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+/* Icon rail + drawer backdrop: hidden on wide screens (see the 960px breakpoint) */
+.ai-sidebar-rail,
+.ai-sidebar-backdrop {
+  display: none;
+}
+
 /* Central AI Stage */
 .ai-main-stage {
   display: flex;
@@ -1050,7 +1178,7 @@
 
 .ai-emblem-mark {
   display: block;
-  width: 96px;
+  width: 126px;
   height: 96px;
   object-fit: contain;
 }
@@ -1485,9 +1613,10 @@
 }
 
 .evidence-ref-item {
-  display: inline-flex;
-  align-items: center;
+  /* inline-block (not flex) so long references end in an ellipsis instead of being cut off */
+  display: inline-block;
   height: 22px;
+  line-height: 20px;
   padding: 0 8px;
   border-radius: 6px;
   border: 1px solid var(--status-fact-border);
@@ -1644,6 +1773,12 @@
   line-height: 1.5;
   color: var(--text-primary);
   background: transparent;
+  /* One line when empty; grows with the text (MentionInput) up to the previous
+     three-line height, then scrolls inside */
+  /* border-box: line heights plus the 2px top/bottom padding */
+  min-height: calc(1.5em + 4px);
+  max-height: calc(4.5em + 4px);
+  overflow-y: hidden;
 }
 
 .ai-composer-textarea:focus,
@@ -2154,7 +2289,6 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 8px;
   box-shadow: var(--shadow-card);
   transition: border-color var(--dur-standard) var(--ease-out),
@@ -2184,19 +2318,42 @@
 }
 
 .metric-card-title {
+  display: block;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.35;
   color: var(--text-muted);
+  /* Up to two lines, and two lines reserved in every card, so values and
+     badges line up across the row without cutting titles short */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  min-height: 2.7em;
+  overflow: hidden;
 }
 
 .metric-card-value {
-  font-size: 21px;
+  /* Proportional font with even-width digits: fits narrow cards without truncation */
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(16px, 1.5vw, 20px);
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.25;
   color: var(--text-primary);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* No value in the source: a calm label instead of a bold number */
+.metric-kpi-card.is-missing .metric-card-value {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-muted);
 }
 
 .metric-card-sub {
@@ -2205,6 +2362,8 @@
 }
 
 .metric-card-foot {
+  /* Pinned to the card bottom so every badge sits on the same line */
+  margin-top: auto;
   padding-top: 6px;
   border-top: 1px solid var(--border-subtle);
 }
@@ -2354,7 +2513,6 @@
   font-size: 14.5px;
   line-height: 1.7;
   color: var(--text-secondary);
-  max-width: 78ch;
 }
 
 .summary-paragraphs > p {
@@ -2947,6 +3105,73 @@
   }
 }
 
+/* AI Chat page fills the Web Tab frame at every size: no page scrollbar; the sidebar
+   and the conversation each scroll on their own, and the composer stays in view. */
+.app-viewport-frame.is-ai-page {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-ai-page .ai-workspace-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.is-ai-page .ai-sidebar {
+  position: static;
+  height: auto;
+  min-height: 0;
+  margin: 16px 0 16px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.is-ai-page .ai-main-stage {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.is-ai-page .ai-conversation-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.is-ai-page .ai-composer-shell {
+  position: static;
+}
+
+/* Dashboard sidebar: one thin scrollbar at most */
+.dashboard-sidebar {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Short Web Tab frames (the Zoho People iframe is ~517px tall) */
+@media (max-height: 640px) {
+  .is-ai-page .ai-sidebar {
+    margin: 12px 0 12px 16px;
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .dashboard-sidebar {
+    padding: 10px;
+  }
+
+  .dash-sidebar-link {
+    height: 34px;
+  }
+
+  .dash-sidebar-footer {
+    display: none;
+  }
+}
+
 /* Responsive Breakpoints for Web Tab Viewports */
 @media (max-width: 1200px) {
   .metrics-kpi-grid {
@@ -2955,20 +3180,203 @@
 }
 
 @media (max-width: 960px) {
+  /* One compact row: logo, employee chip, AI/Dashboard toggle, source switch, actions */
   .top-nav-bar {
-    grid-template-columns: 1fr auto;
-    height: auto;
-    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    height: 52px;
+    padding: 0 12px;
+    gap: 8px;
+  }
+
+  .top-nav-left {
+    flex: 1 1 auto;
+    gap: 8px;
+  }
+
+  .brand-title {
+    display: none;
+  }
+
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .brand-icon img {
+    width: 30px;
+    height: 30px;
+  }
+
+  .top-nav-center,
+  .top-nav-right {
+    flex: none;
   }
 
   .top-nav-right {
-    grid-column: 1 / -1;
-    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .employee-selector-trigger {
+    height: 34px;
+  }
+
+  .mode-toggle-track {
+    padding: 3px;
+  }
+
+  .mode-toggle-btn {
+    height: 30px;
+    padding: 0 12px;
+  }
+
+  .nav-icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* AI page fills the frame: the conversation scrolls inside, the composer stays in view */
+  .app-viewport-frame.is-ai-page {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .is-ai-page .ai-workspace-shell {
+    display: flex;
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0;
+  }
+
+  .is-ai-page .ai-main-stage {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    border: none;
+    overflow: hidden;
+  }
+
+  .is-ai-page .ai-conversation-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .is-ai-page .ai-composer-shell {
+    position: static;
+    border-radius: 0;
+    padding: 10px 12px 12px;
+  }
+
+  .is-ai-page .ai-composer-box {
+    max-width: none;
+  }
+
+  .is-ai-page .ai-hero-greeting {
+    padding: 12px 16px 16px;
+  }
+
+  /* Conversation sidebar collapses to an icon rail and opens as a drawer */
+  .ai-sidebar-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    width: 48px;
+    padding: 10px 6px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .ai-rail-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: background-color var(--dur-micro) ease-out, color var(--dur-micro) ease-out,
+      border-color var(--dur-micro) ease-out;
+  }
+
+  .ai-rail-btn:hover,
+  .ai-rail-btn[aria-expanded='true'] {
+    background: var(--bg-subtle);
+    border-color: var(--border-subtle);
+    color: var(--accent-primary);
+  }
+
+  .ai-rail-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  .is-ai-page .ai-sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 48px;
+    z-index: 30;
+    width: min(300px, calc(100% - 64px));
+    height: auto;
+    margin: 0;
+    border-radius: 0 14px 14px 0;
+    box-shadow: 0 18px 40px -12px rgba(15, 23, 42, 0.35);
+    transform: translateX(-12px);
+    opacity: 0;
+    visibility: hidden;
+    transition: transform var(--dur-panel) var(--ease-out), opacity var(--dur-panel) var(--ease-out),
+      visibility 0s linear var(--dur-panel);
+  }
+
+  .is-ai-page .is-sidebar-open .ai-sidebar {
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+    transition: transform var(--dur-panel) var(--ease-out), opacity var(--dur-panel) var(--ease-out);
+  }
+
+  .is-ai-page .ai-sidebar-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0 0 0 48px;
+    z-index: 25;
+    border: none;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  /* Dashboard: sections become one horizontally scrolling row above the content */
+  .dashboard-sidebar {
+    padding: 8px;
+  }
+
+  .dash-sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    scrollbar-width: thin;
+  }
+
+  .dash-sidebar-link {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .dash-sidebar-footer {
+    display: none;
   }
 
   .ai-workspace-shell,
   .dashboard-workspace-shell {
-    grid-template-columns: 1fr;
+    /* minmax(0, …) lets the single column shrink to the frame instead of growing to its content */
+    grid-template-columns: minmax(0, 1fr);
     padding: 14px;
   }
 
@@ -2994,9 +3402,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ai-sidebar-threads {
-    max-height: 220px;
-  }
 
   .emp-profile-right {
     align-items: flex-start;
@@ -3011,17 +3416,27 @@
 }
 
 @media (max-width: 720px) {
-  .top-nav-bar {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  /* AI Chat / Dashboard toggle shows icons only; the text stays for screen readers */
+  .mode-toggle-btn {
+    padding: 0 10px;
   }
 
-  .top-nav-left {
-    flex-wrap: wrap;
+  .mode-toggle-btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
-  .top-nav-center {
-    justify-content: flex-start;
+  .selector-emp-sep,
+  .selector-emp-id {
+    display: none;
+  }
+
+  .source-btn {
+    padding: 0 8px;
   }
 
   .employee-selector-wrapper {
@@ -3094,4 +3509,214 @@
   .mode-toggle-btn {
     padding: 0 14px;
   }
+}
+
+/* ---------- Voice chat ---------- */
+.composer-mic-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-mic-btn.is-recording {
+  position: relative;
+  background: var(--status-error-bg);
+  border-color: var(--status-error-border);
+  color: #dc2626;
+}
+
+.composer-mic-btn.is-recording::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 11px;
+  border: 2px solid rgba(220, 38, 38, 0.35);
+  animation: mic-ring 1.4s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes mic-ring {
+  from { opacity: 1; transform: scale(0.92); }
+  to { opacity: 0; transform: scale(1.18); }
+}
+
+/* Floats above the composer, so recording/transcribing/errors never resize the chat */
+.ai-composer-box {
+  position: relative;
+}
+
+.voice-status {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-popover);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.voice-status.is-error {
+  border-color: var(--status-error-border);
+  background: var(--status-error-bg);
+}
+
+
+.voice-status.is-error {
+  color: var(--status-error-text);
+}
+
+.voice-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  animation: pulse-soft 1.2s ease-in-out infinite;
+}
+
+.voice-status-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.voice-status-link:hover {
+  text-decoration: underline;
+}
+
+.user-message-voice {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-primary);
+}
+
+.assistant-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.assistant-listen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--dur-micro) ease-out, border-color var(--dur-micro) ease-out,
+    color var(--dur-micro) ease-out;
+}
+
+.assistant-listen-btn:hover,
+.assistant-listen-btn.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent-primary);
+}
+
+.assistant-listen-btn:focus-visible,
+.composer-mic-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.listen-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-border);
+  border-top-color: var(--accent-primary);
+  animation: listen-spin 0.8s linear infinite;
+}
+
+@keyframes listen-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-mic-btn.is-recording::after,
+  .voice-rec-dot,
+  .listen-spinner {
+    animation-duration: 0s;
+    animation-iteration-count: 1;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Scroll containment inside the Zoho People Web Tab frame
+   - The AI page's outer boxes use overflow: clip (hidden is still a scroll container,
+     so focus, caret moves and smooth scrolls could shift it and leave a blank gap below).
+   - Wheel and touch scrolling stay inside the widget instead of chaining to the
+     Zoho People page around the frame.
+   -------------------------------------------------------------------------- */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.app-viewport-frame.is-ai-page,
+.is-ai-page .ai-workspace-shell,
+.is-ai-page .ai-main-stage {
+  overflow: hidden;
+  overflow: clip;
+}
+
+.is-ai-page .ai-conversation-scroll,
+.is-ai-page .ai-sidebar,
+.dashboard-sidebar {
+  overscroll-behavior: contain;
+}
+
+/* AI Chat: the top bar, the composer and the sidebar stay in place. Only the
+   conversation and the Conversations (chat history) list scroll. */
+.is-ai-page .ai-sidebar {
+  overflow: hidden;
+  overflow: clip;
+}
+
+.is-ai-page .ai-sidebar-top,
+.is-ai-page .sidebar-subject-card,
+.is-ai-page .sidebar-state-switcher {
+  flex: none;
+}
+
+.is-ai-page .ai-sidebar-threads {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 72px;
+}
+
+.is-ai-page .thread-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* The expanded "Signed in as" details scroll inside the card on short frames */
+.is-ai-page .subject-card-details {
+  max-height: 32vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }

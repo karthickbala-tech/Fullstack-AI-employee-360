@@ -13,6 +13,8 @@ const TimelineController = require('../controllers/timelineController');
 const AskController = require('../controllers/askController');
 const ZohoPeopleController = require('../controllers/zohoPeopleController');
 const MeController = require('../controllers/meController');
+const AskAllController = require('../controllers/askAllController');
+const VoiceController = require('../controllers/voiceController');
 
 const employee360Controller = new Employee360Controller();
 const summaryController = new SummaryController();
@@ -21,6 +23,8 @@ const timelineController = new TimelineController();
 const askController = new AskController();
 const zohoPeopleController = new ZohoPeopleController();
 const meController = new MeController();
+const askAllController = new AskAllController();
+const voiceController = new VoiceController();
 
 // Read routes accept GET, and POST so the Web Tab can carry its identity
 // assertion in a text/plain body (no CORS preflight; see
@@ -28,6 +32,24 @@ const meController = new MeController();
 const READ_METHODS = ['GET', 'POST'];
 
 const routes = [
+  {
+    method: 'POST',
+    pattern: /^\/v1\/ask\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => askAllController.handle(req, res, params, ctx)
+  },
+  {
+    method: 'POST',
+    pattern: /^\/v1\/voice\/transcribe\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => voiceController.transcribe(req, res, params, ctx)
+  },
+  {
+    method: 'POST',
+    pattern: /^\/v1\/voice\/speak\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => voiceController.speak(req, res, params, ctx)
+  },
   {
     method: READ_METHODS,
     pattern: /^\/v1\/me\/?$/,

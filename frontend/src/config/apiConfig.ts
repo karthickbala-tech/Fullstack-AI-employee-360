@@ -21,9 +21,16 @@ export const DEFAULT_DATA_SOURCE_MODE: DataSourceMode =
   import.meta.env.VITE_USE_MOCK_DATA === 'false' ? 'live' : 'mock';
 
 export const API_TIMEOUT_MS = 20000;
+/** Chat answers: the backend gives up on translation at 18 s and its AI at ~12 s. */
+export const ASK_TIMEOUT_MS = 28000;
+/** Speech-to-text: Sarvam is given 15 s on the server. */
+export const VOICE_TIMEOUT_MS = 22000;
 
 export const API_ENDPOINTS = {
   me: () => `${API_BASE_URL}/v1/me`,
+  askChat: () => `${API_BASE_URL}/v1/ask`,
+  voiceTranscribe: () => `${API_BASE_URL}/v1/voice/transcribe`,
+  voiceSpeak: () => `${API_BASE_URL}/v1/voice/speak`,
   zohoStatus: () => `${API_BASE_URL}/v1/zoho/status`,
   zohoEmployees: () => `${API_BASE_URL}/v1/zoho/employees`,
   employee360: (employeeId: string) =>

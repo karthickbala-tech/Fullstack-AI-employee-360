@@ -1,26 +1,68 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import aiEmblem from '../assets/ai-emblem.gif';
-import { SUGGESTED_AI_PROMPTS } from '../config/apiConfig';
 import type {
   ActivePage,
+  AskMentions,
   ChatMessage,
   ConversationThread,
   DataSourceMode,
   Employee360Data,
   EvidenceRecord,
+  Mentionable,
 } from '../types/employee360';
+import { EMPTY_MENTIONS, mentionsFromSpeech, mentionsFromText, type MentionToken } from '../services/mentions';
+import { orNotRecorded } from '../services/displayFormat';
+import { synthesizeSpeech, transcribeSpeech } from '../services/employee360DataProvider';
+import {
+  MAX_RECORDING_MS,
+  MAX_SPEAK_INPUT_CHARS,
+  MIN_RECORDING_MS,
+  VoicePlayer,
+  VoiceRecorder,
+  blobToBase64,
+  describeMicrophoneDenial,
+  microphoneDenialMessage,
+  MICROPHONE_NOT_DELEGATED,
+  RECORDER_WINDOW_BLOCKED,
+  closeRecorderWindow,
+  recordInWindow,
+  type Recording,
+  isVoiceInputSupported,
+  microphoneErrorMessage,
+  voicePlayer,
+  type PlayerState,
+} from '../services/voice';
+import { friendlyApiError } from '../api/apiClient';
 import { EmployeeAvatar } from './EmployeeAvatar';
+import { MentionInput } from './MentionInput';
 import { ConfidenceLabel, SemanticBadge } from './SemanticBadge';
 
+/** The signed-in user, as shown in the chat sidebar. */
+export interface ChatViewer {
+  employeeId: string | null;
+  name: string;
+  detail: string;
+}
+
 interface AIChatViewProps {
-  employeeId: string;
+  viewer: ChatViewer;
+  /** The viewer's own Employee 360, when loaded (sidebar card and grounded-context drawer). */
   canonical: Employee360Data | null;
+  /** People and departments the viewer may mention (@ / #). */
+  mentionable: Mentionable | null;
   threads: ConversationThread[];
   activeThreadId: string;
   onSelectThread: (threadId: string) => void;
   onNewThread: () => void;
   onClearCurrentThread: () => void;
-  onSendQuestion: (question: string) => Promise<void>;
+  onSendQuestion: (
+    question: string,
+    mentions: AskMentions,
+    options?: { language?: string; viaVoice?: boolean }
+  ) => Promise<void>;
+  /** Assistant message to read aloud once (the answer to a spoken question). */
+  autoSpeakMessageId?: string | null;
+  onAutoSpeakHandled?: () => void;
   isAsking: boolean;
   askError: string | null;
   onClearAskError: () => void;
@@ -117,9 +159,40 @@ function renderFormattedContent(text: string): React.ReactNode {
   return elements;
 }
 
+/** Starter questions that fit what the viewer may ask about. */
+function suggestedPrompts(allScope: Mentionable['allScope'] | undefined): string[] {
+  if (allScope === 'organization') {
+    return [
+      'How many active employees are there?',
+      'Headcount by department',
+      'Who has the best attendance?',
+      'Who has the most late days?',
+      'Who joined most recently?',
+      'What is my leave utilization?',
+    ];
+  }
+  if (allScope === 'team') {
+    return [
+      'How many people are in my team?',
+      'Who has the most late days in my team?',
+      'Average attendance in my team',
+      'What is my leave utilization?',
+      'How long have I worked here?',
+    ];
+  }
+  return [
+    'What is my department?',
+    'How long have I worked here?',
+    'What is my attendance?',
+    'What is my leave utilization?',
+    'Who is my reporting manager?',
+  ];
+}
+
 export const AIChatView: React.FC<AIChatViewProps> = ({
-  employeeId,
+  viewer,
   canonical,
+  mentionable,
   threads,
   activeThreadId,
   onSelectThread,
@@ -130,19 +203,47 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
   askError,
   onClearAskError,
   onSwitchToDashboard,
+  dataSourceMode,
+  autoSpeakMessageId = null,
+  onAutoSpeakHandled,
 }) => {
   const [questionInput, setQuestionInput] = useState('');
+  // Voice input: idle → requesting (browser asks for the mic) → recording → transcribing → (question sent) → idle
+  const [voiceState, setVoiceState] = useState<'idle' | 'requesting' | 'recording' | 'transcribing'>('idle');
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [player, setPlayer] = useState<PlayerState>({ key: null, loading: false });
+  const recorderRef = useRef<VoiceRecorder | null>(null);
+  const voiceBusyRef = useRef(false);
+  const voiceSupported = isVoiceInputSupported();
+  // Set after the browser actually refused the microphone inside the Web Tab frame
+  // (MICROPHONE_NOT_DELEGATED): later taps record in the voice recorder window
+  const useWindowRef = useRef(false);
+  const windowAttemptRef = useRef(0);
+  const [recordingInWindow, setRecordingInWindow] = useState(false);
+  const [voiceErrorAction, setVoiceErrorAction] = useState<'window' | null>(null);
+  // Mentions picked from the @ / # lists for the question being typed
+  const [pendingTokens, setPendingTokens] = useState<MentionToken[]>([]);
   // Manual "View / Hide Prompts" override, scoped to the thread + empty/non-empty state it was made in
   const [promptsOverride, setPromptsOverride] = useState<{ key: string; open: boolean } | null>(
     null
   );
   const [contextDrawerOpen, setContextDrawerOpen] = useState(false);
+  const contextDrawerRef = useRef<HTMLElement | null>(null);
   // Subject context card is collapsed by default so conversation history keeps its space
   const [subjectCardOpen, setSubjectCardOpen] = useState(false);
-  const [uiDemoState, setUiDemoState] = useState<'normal' | 'loading' | 'empty' | 'error'>(
+  // Narrow frames (the Zoho People Web Tab) show the sidebar as an icon rail; this opens it as a drawer
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedDemoState, setUiDemoState] = useState<'normal' | 'loading' | 'empty' | 'error'>(
     'normal'
   );
+  // The UI state switcher is a Demo-mode tool; with live data the real state always shows
+  const isLiveData = dataSourceMode === 'live';
+  const uiDemoState = isLiveData ? 'normal' : selectedDemoState;
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // The conversation scrolls inside this element only. scrollIntoView would also scroll
+  // the clipped page frame and the Zoho People page around the Web Tab, leaving a blank gap.
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
   // Conversation state at mount; auto-scroll is skipped until it changes (see effect below)
   const mountScrollKeyRef = useRef<string | null | undefined>(undefined);
 
@@ -158,10 +259,15 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
   const showPromptsPanel =
     promptsOverride?.key === promptsKey ? promptsOverride.open : !hasMessages;
 
-  const empName = canonical?.employee?.fullName || `Employee ${employeeId}`;
-  const empRole = canonical?.employment?.jobTitle || 'Role Unknown';
-  const empDept = canonical?.organisation?.department || 'Department Unknown';
-  const empStatus = canonical?.employment?.employmentStatus || 'Unknown';
+  const empName = viewer.name;
+  const prompts = suggestedPrompts(mentionable?.allScope);
+  const empRole = canonical ? orNotRecorded(canonical.employment?.jobTitle) : 'Loading…';
+  const empDept = canonical ? orNotRecorded(canonical.organisation?.department) : 'Loading…';
+  const empTenure = !canonical
+    ? 'Loading…'
+    : canonical.deterministicMetrics?.tenure?.formatted && canonical.deterministicMetrics.tenure.formatted !== 'Unknown'
+      ? canonical.deterministicMetrics.tenure.formatted
+      : 'Not recorded';
   const evidenceMap = new Map<string, EvidenceRecord>();
   (canonical?.evidence || []).forEach((ev) => {
     evidenceMap.set(`${ev.domain}.${ev.field}`, ev);
@@ -180,38 +286,313 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
     // Nothing to follow in an empty chat: keep the welcome banner in view
     if (messages.length === 0 && !isAsking && uiDemoState !== 'loading') return;
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    messagesEndRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+    const scroller = conversationScrollRef.current;
+    scroller?.scrollTo({ top: scroller.scrollHeight, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
   }, [messages.length, isAsking, uiDemoState]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sidebarOpen]);
+
+  // One shared player: reflect what is playing, and stop sound when the chat closes
+  useEffect(() => voicePlayer.subscribe(setPlayer), []);
+  useEffect(
+    () => () => {
+      recorderRef.current?.cancel();
+      closeRecorderWindow();
+      voicePlayer.stop();
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (voiceState !== 'recording') return;
+    const started = Date.now();
+    const timer = window.setInterval(() => setRecordingSeconds(Math.floor((Date.now() - started) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [voiceState]);
+
+  // Autoplay refused (no recent click) or the voice service failed: the text is already shown
+  const reportPlaybackError = useCallback((error: unknown) => {
+    const name = (error as { name?: string } | null)?.name;
+    if (name === 'NotAllowedError') {
+      setVoiceError('Tap the speaker on the answer to hear it.');
+    } else if (name !== 'AbortError') {
+      setVoiceError(friendlyApiError(error, "Couldn't play the spoken answer. You can still read it above."));
+    }
+  }, []);
+
+  /** Plays a message, or stops it if it is the one playing (toggle). */
+  const toggleSpeech = useCallback(
+    (message: ChatMessage) => {
+      const text = message.content.slice(0, MAX_SPEAK_INPUT_CHARS);
+      const language = message.language || 'en-IN';
+      if (voicePlayer.isCurrent(text, language)) {
+        voicePlayer.stop();
+        return;
+      }
+      voicePlayer.play(text, language, synthesizeSpeech).catch(reportPlaybackError);
+    },
+    [reportPlaybackError]
+  );
+
+  // Read the answer to a spoken question aloud, once
+  useEffect(() => {
+    if (!autoSpeakMessageId) return;
+    const message = messages.find((m) => m.id === autoSpeakMessageId);
+    onAutoSpeakHandled?.();
+    if (!message) return;
+    voicePlayer
+      .play(message.content.slice(0, MAX_SPEAK_INPUT_CHARS), message.language || 'en-IN', synthesizeSpeech)
+      .catch(reportPlaybackError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSpeakMessageId]);
+
+  /** Transcribes one recording and sends it as the question. */
+  const sendRecording = useCallback(
+    async (recording: Recording | null) => {
+      if (!recording || recording.durationMs < MIN_RECORDING_MS) {
+        setVoiceState('idle');
+        setVoiceError('That was too short. Tap the microphone, speak, then tap it again to send.');
+        return;
+      }
+      try {
+        setVoiceState('transcribing');
+        const audio = await blobToBase64(recording.blob);
+        const heard = await transcribeSpeech(audio, recording.mimeType);
+        setVoiceState('idle');
+        const transcript = heard.transcript.trim();
+        if (!transcript) {
+          setVoiceError("I couldn't hear any words. Please try again a little closer to the microphone.");
+          return;
+        }
+        setUiDemoState('normal');
+        setPromptsOverride(null);
+        await onSendQuestion(transcript, mentionsFromSpeech(transcript, mentionable), {
+          language: heard.languageCode,
+          viaVoice: true,
+        });
+      } catch (error) {
+        setVoiceState('idle');
+        setVoiceError(
+          friendlyApiError(error, "Couldn't turn your speech into text. Please try again.")
+        );
+      }
+    },
+    [onSendQuestion, mentionable]
+  );
+
+  const finishRecording = useCallback(async () => {
+    const recorder = recorderRef.current;
+    if (!recorder || voiceBusyRef.current) return;
+    voiceBusyRef.current = true;
+    try {
+      const recording = await recorder.stop();
+      recorderRef.current = null;
+      await sendRecording(recording);
+    } finally {
+      voiceBusyRef.current = false;
+    }
+  }, [sendRecording]);
+
+  /**
+   * Records in the voice recorder window (app/voice.html). Only used after the
+   * browser refused the microphone inside the Web Tab; must run within a click.
+   */
+  const recordWithWindow = () => {
+    const attempt = ++windowAttemptRef.current;
+    setVoiceError(null);
+    setVoiceErrorAction(null);
+    setRecordingInWindow(true);
+    setVoiceState('recording');
+    recordInWindow()
+      .then((recording) => {
+        if (attempt !== windowAttemptRef.current) return;
+        setRecordingInWindow(false);
+        if (!recording) {
+          setVoiceState('idle');
+          return;
+        }
+        return sendRecording(recording);
+      })
+      .catch((error) => {
+        if (attempt !== windowAttemptRef.current) return;
+        setRecordingInWindow(false);
+        setVoiceState('idle');
+        const blocked = (error as { name?: string } | null)?.name === 'PopupBlockedError';
+        setVoiceError(blocked ? RECORDER_WINDOW_BLOCKED : microphoneErrorMessage(error));
+        if (blocked) setVoiceErrorAction('window');
+      });
+  };
+
+  const handleMicClick = async () => {
+    if (voiceState === 'recording') {
+      if (!recordingInWindow) void finishRecording();
+      return;
+    }
+    if (voiceState !== 'idle' || isAsking || voiceBusyRef.current) return;
+    onClearAskError();
+    setVoiceError(null);
+    setVoiceErrorAction(null);
+    if (useWindowRef.current) {
+      voicePlayer.stop();
+      voicePlayer.unlock();
+      recordWithWindow();
+      return;
+    }
+    // Inside this click, so the spoken answer may play automatically later
+    voicePlayer.stop();
+    voicePlayer.unlock();
+    // Always ask the browser: whether an embedded page may use the microphone is
+    // decided by getUserMedia itself, not guessed here. Registered before the
+    // permission prompt so Escape or leaving the chat can cancel it.
+    const recorder = new VoiceRecorder();
+    recorderRef.current = recorder;
+    voiceBusyRef.current = true;
+    setVoiceState('requesting');
+    try {
+      await recorder.start(() => void finishRecording());
+      if (recorderRef.current !== recorder) return;
+      setRecordingSeconds(0);
+      setVoiceState('recording');
+    } catch (error) {
+      recorder.cancel();
+      if (recorderRef.current === recorder) recorderRef.current = null;
+      setVoiceState('idle');
+      // Cancelled by the user while the browser was asking: nothing to report
+      if ((error as { name?: string } | null)?.name !== 'AbortError') {
+        setVoiceError(microphoneErrorMessage(error));
+        // Refine the message with why it was refused (frame policy vs site setting);
+        // the facts are logged for support (no personal data in them)
+        void describeMicrophoneDenial(error).then((facts) => {
+          console.info('[Employee 360] microphone refused', facts);
+          const message = microphoneDenialMessage(facts);
+          setVoiceError(message);
+          // The frame can't use the microphone: record in the voice recorder window
+          // instead (still within this click, so the browser lets it open)
+          if (message === MICROPHONE_NOT_DELEGATED) {
+            useWindowRef.current = true;
+            recordWithWindow();
+          }
+        });
+      }
+    } finally {
+      voiceBusyRef.current = false;
+    }
+  };
+
+  const cancelRecording = () => {
+    windowAttemptRef.current += 1;
+    closeRecorderWindow();
+    setRecordingInWindow(false);
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
+    setVoiceState('idle');
+  };
+
+  useEffect(() => {
+    if (voiceState !== 'recording' && voiceState !== 'requesting') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') cancelRecording();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [voiceState]);
+
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     const trimmed = questionInput.trim();
     if (!trimmed || isAsking) return;
+    const mentions = mentionsFromText(trimmed, pendingTokens);
+    voicePlayer.stop();
     setUiDemoState('normal');
     setQuestionInput('');
+    setPendingTokens([]);
     setPromptsOverride(null);
-    await onSendQuestion(trimmed);
+    await onSendQuestion(trimmed, mentions);
   };
 
   const handleSuggestedPromptClick = async (promptText: string) => {
     if (isAsking) return;
+    voicePlayer.stop();
     setUiDemoState('normal');
     setPromptsOverride(null);
-    await onSendQuestion(promptText);
+    await onSendQuestion(promptText, EMPTY_MENTIONS);
   };
 
   const effectiveLoading = isAsking || uiDemoState === 'loading';
   const effectiveError =
     uiDemoState === 'error'
-      ? 'Simulated Backend Error: Unable to complete POST /v1/employees/' +
-        employeeId +
-        '/ask. Upstream Zoho People or Gemini provider returned a transient timeout.'
+      ? 'Simulated Backend Error: Unable to complete POST /v1/ask. Upstream Zoho People or Gemini provider returned a transient timeout.'
       : askError;
 
   return (
-    <div className="ai-workspace-shell">
+    <div className={`ai-workspace-shell ${sidebarOpen ? 'is-sidebar-open' : ''}`}>
+      {/* Icon rail: shown only in narrow frames, where the sidebar becomes a drawer */}
+      <div className="ai-sidebar-rail">
+        <button
+          type="button"
+          className="ai-rail-btn"
+          onClick={() => setSidebarOpen((open) => !open)}
+          aria-expanded={sidebarOpen}
+          aria-controls="ai-conversation-sidebar"
+          aria-label={sidebarOpen ? 'Close conversations' : 'Open conversations'}
+          title="Conversations"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="ai-rail-btn"
+          onClick={() => {
+            setUiDemoState('normal');
+            setSidebarOpen(false);
+            onNewThread();
+          }}
+          aria-label="Start a new AI conversation"
+          title="New chat"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="ai-rail-btn"
+          onClick={() => onSwitchToDashboard('dashboard')}
+          aria-label="Open the Employee 360 dashboard"
+          title="Employee 360 Overview"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+        </button>
+      </div>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="ai-sidebar-backdrop"
+          aria-label="Close conversations"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Compact Left Conversation & Context Sidebar */}
-      <aside className="ai-sidebar" aria-label="Conversation history and employee context">
+      <aside
+        id="ai-conversation-sidebar"
+        className="ai-sidebar"
+        aria-label="Conversation history and employee context"
+      >
         <div className="ai-sidebar-top">
           <button
             type="button"
@@ -234,6 +615,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
               className="new-chat-plus-btn"
               onClick={() => {
                 setUiDemoState('normal');
+                setSidebarOpen(false);
                 onNewThread();
               }}
               title="Start a new AI conversation for this employee"
@@ -245,7 +627,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
         </div>
 
         <div className="ai-sidebar-threads">
-          <div className="sidebar-section-caption">Conversations ({empName})</div>
+          <div className="sidebar-section-caption">Conversations</div>
           <ul className="thread-list">
             {threads.map((thread) => {
               const isCurrent = thread.id === activeThread?.id && uiDemoState !== 'empty';
@@ -256,6 +638,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                     className={`thread-item-btn ${isCurrent ? 'active' : ''}`}
                     onClick={() => {
                       setUiDemoState('normal');
+                      setSidebarOpen(false);
                       onSelectThread(thread.id);
                     }}
                   >
@@ -279,20 +662,16 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
             aria-controls="subject-card-details"
             onClick={() => setSubjectCardOpen((prev) => !prev)}
           >
-            <span className="subject-card-kicker">SUBJECT CONTEXT</span>
+            <span className="subject-card-kicker">SIGNED IN AS</span>
             <span className="subject-card-main">
               <EmployeeAvatar
-                employeeId={employeeId}
-                fullName={canonical?.employee?.fullName || null}
+                employeeId={viewer.employeeId || 'VIEWER'}
+                fullName={viewer.employeeId ? viewer.name : null}
                 size="sm"
               />
               <span className="subject-card-info">
                 <span className="subject-card-name">{empName}</span>
-                <span className="subject-card-sub">
-                  <span className="mono-num">{employeeId}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{empStatus}</span>
-                </span>
+                <span className="subject-card-sub">{viewer.detail}</span>
               </span>
               <svg
                 className="subject-card-chevron"
@@ -310,29 +689,58 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
           </button>
           {subjectCardOpen && (
           <div id="subject-card-details" className="subject-card-details">
-          <div className="subject-card-facts">
+          <dl className="subject-card-facts">
+            {viewer.employeeId && (
+              <div>
+                <dt>Employee ID</dt>
+                <dd className="mono-num">{viewer.employeeId}</dd>
+              </div>
+            )}
             <div>
-              <span>Role:</span> <strong>{empRole}</strong>
+              <dt>Access</dt>
+              <dd>{viewer.detail}</dd>
             </div>
             <div>
-              <span>Dept:</span> <strong>{empDept}</strong>
+              <dt>Role</dt>
+              <dd>{empRole}</dd>
             </div>
             <div>
-              <span>Tenure:</span>{' '}
-              <strong className="mono-num">
-                {canonical?.deterministicMetrics?.tenure?.formatted || 'Unknown'}
-              </strong>
+              <dt>Department</dt>
+              <dd>{empDept}</dd>
             </div>
             <div>
-              <span>Grounded Evidence:</span>{' '}
-              <strong className="mono-num">{canonical?.evidence?.length ?? 0} records</strong>
+              <dt>Tenure</dt>
+              <dd className="mono-num">{empTenure}</dd>
             </div>
-          </div>
+            <div>
+              <dt>Evidence</dt>
+              <dd className="mono-num">
+                {canonical ? `${canonical.evidence.length} verified record${canonical.evidence.length === 1 ? '' : 's'}` : 'Not loaded'}
+              </dd>
+            </div>
+          </dl>
           <button
             type="button"
             className="subject-inspect-btn"
             aria-expanded={contextDrawerOpen}
-            onClick={() => setContextDrawerOpen((prev) => !prev)}
+            aria-controls="grounded-context-drawer"
+            disabled={!canonical}
+            title={canonical ? undefined : 'Your Employee 360 record is still loading'}
+            onClick={() => {
+              const opening = !contextDrawerOpen;
+              setContextDrawerOpen(opening);
+              if (opening) {
+                // On narrow frames the sidebar is a drawer over the chat: close it so the panel shows
+                setSidebarOpen(false);
+                requestAnimationFrame(() => {
+                  const scroller = conversationScrollRef.current;
+                  const drawer = contextDrawerRef.current;
+                  if (!scroller || !drawer) return;
+                  const offset = drawer.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                  scroller.scrollTo({ top: scroller.scrollTop + offset, behavior: 'smooth' });
+                });
+              }
+            }}
           >
             {contextDrawerOpen ? 'Hide Grounded Context' : 'Inspect Grounded Context'}
           </button>
@@ -340,7 +748,8 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
           )}
         </div>
 
-        {/* UI State Verification Switcher (Populated / Loading / Empty / Error) */}
+        {/* UI State Verification Switcher (Populated / Loading / Empty / Error): Demo mode only */}
+        {!isLiveData && (
         <div className="sidebar-state-switcher">
           <div className="sidebar-section-caption">UI State Verification</div>
           <div className="state-btn-grid">
@@ -387,11 +796,12 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
             </button>
           </div>
         </div>
+        )}
       </aside>
 
       {/* Dominant Central Conversational Canvas */}
       <main className="ai-main-stage" aria-label="AI Employee 360 Assistant">
-        <div className="ai-conversation-scroll">
+        <div className="ai-conversation-scroll" ref={conversationScrollRef}>
           {/* Welcome Header & Suggested Prompts (intro only before the first question) */}
           {(!hasMessages || showPromptsPanel) && (
           <section className={`ai-hero-greeting ${hasMessages ? 'is-compact' : ''}`}>
@@ -401,13 +811,18 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
               <img className="ai-emblem-mark" src={aiEmblem} alt="" width={96} height={96} />
             </div>
 
-            <h1 className="ai-greeting-title">
-              Employee 360 Intelligence · {empName}
-            </h1>
+            <h1 className="ai-greeting-title">Employee 360 Intelligence</h1>
             <p className="ai-greeting-subtitle">
-              Ask natural-language questions grounded strictly in verified Zoho People records,
-              deterministic calculations, and extracted evidence for{' '}
-              <span className="mono-num">{employeeId}</span>.
+              Ask about anything you have access to, grounded in verified Zoho People records.
+              {mentionable?.canMentionAll ? (
+                <>
+                  {' '}Type <kbd className="mention-kbd">@</kbd> for a person,{' '}
+                  <kbd className="mention-kbd">#</kbd> for a department, or{' '}
+                  <kbd className="mention-kbd">@all</kbd> for everyone.
+                </>
+              ) : (
+                <> Questions are answered from your own record.</>
+              )}
             </p>
             </>
             )}
@@ -415,7 +830,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
             {/* Suggested Prompts Grid */}
             {showPromptsPanel && (
               <div className="suggested-prompts-cluster" aria-label="Suggested employee questions">
-                {SUGGESTED_AI_PROMPTS.map((promptText) => (
+                {prompts.map((promptText) => (
                   <button
                     key={promptText}
                     type="button"
@@ -437,54 +852,6 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                     <span>{promptText}</span>
                   </button>
                 ))}
-                <button
-                  type="button"
-                  className="suggested-prompt-btn"
-                  disabled={effectiveLoading}
-                  onClick={() =>
-                    handleSuggestedPromptClick(
-                      'What is the attendance and leave utilization status?'
-                    )
-                  }
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden="true"
-                  >
-                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                    <path d="M16 2v4M8 2v4M3 10h18" />
-                  </svg>
-                  <span>Attendance &amp; leave utilization status</span>
-                </button>
-                <button
-                  type="button"
-                  className="suggested-prompt-btn"
-                  disabled={effectiveLoading}
-                  onClick={() =>
-                    handleSuggestedPromptClick(
-                      'Which employee attributes are currently Unknown or unrecorded?'
-                    )
-                  }
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01" />
-                  </svg>
-                  <span>Check Unknown / unrecorded fields</span>
-                </button>
               </div>
             )}
           </section>
@@ -492,7 +859,12 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
 
           {/* Optional Grounded Context Drawer */}
           {contextDrawerOpen && canonical && (
-            <section className="grounded-context-drawer" aria-label="Canonical Employee 360 Context">
+            <section
+              id="grounded-context-drawer"
+              ref={contextDrawerRef}
+              className="grounded-context-drawer"
+              aria-label="Canonical Employee 360 Context"
+            >
               <div className="context-drawer-header">
                 <div>
                   <h3>Canonical Employee 360 Context Sent to AI Engine</h3>
@@ -592,12 +964,11 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
           {messages.length === 0 && !effectiveLoading && (
             <div className="ai-empty-state">
               <div className="ai-empty-card">
-                <h3>Ready to analyze {empName}</h3>
+                <h3>Ask anything you have access to</h3>
                 <p>
-                  Select any suggested prompt above or type a natural-language question below to
-                  query <code className="inline-code mono-num">POST /v1/employees/{employeeId}/ask</code>.
-                  All responses preserve strict Fact, Calculation, Trend, AI Insight, and Unknown
-                  semantics.
+                  Pick a suggested question above or type your own below. Without a mention, a
+                  question covers everyone you may see; answers keep strict Fact, Calculation,
+                  Trend, AI Insight and Unknown semantics.
                 </p>
               </div>
             </div>
@@ -612,8 +983,15 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                     <div className="user-message-bubble">
                       <div className="user-message-meta">
                         <span>You</span>
-                        <span aria-hidden="true">·</span>
-                        <span>Subject: {empName}</span>
+                        {msg.viaVoice && (
+                          <span className="user-message-voice" title="Asked by voice">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                              <rect x="9" y="3" width="6" height="11" rx="3" />
+                              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" strokeLinecap="round" />
+                            </svg>
+                            <span className="sr-only">Asked by voice</span>
+                          </span>
+                        )}
                       </div>
                       <p className="user-message-text">{msg.content}</p>
                     </div>
@@ -643,15 +1021,50 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                         <span className="assistant-sep" aria-hidden="true">
                           ·
                         </span>
-                        <span className="assistant-emp-ref mono-num">{msg.employeeId}</span>
+                        {meta?.scopeLabel && (
+                          <span className="assistant-emp-ref">{meta.scopeLabel}</span>
+                        )}
                       </div>
 
-                      {showSemantics && (
-                        <div className="assistant-semantics-bar">
-                          <SemanticBadge classification={meta.type} size="md" />
-                          <ConfidenceLabel confidence={meta.confidence} />
-                        </div>
-                      )}
+                      <div className="assistant-header-actions">
+                        {showSemantics && (
+                          <div className="assistant-semantics-bar">
+                            <SemanticBadge classification={meta.type} size="md" />
+                            <ConfidenceLabel confidence={meta.confidence} />
+                          </div>
+                        )}
+                        {(() => {
+                          const key = VoicePlayer.keyFor(msg.content.slice(0, MAX_SPEAK_INPUT_CHARS), msg.language || 'en-IN');
+                          const active = player.key === key;
+                          const loading = active && player.loading;
+                          return (
+                            <button
+                              type="button"
+                              className={`assistant-listen-btn ${active ? 'is-active' : ''}`}
+                              onClick={() => {
+                                setVoiceError(null);
+                                toggleSpeech(msg);
+                              }}
+                              aria-label={active ? 'Stop reading this answer' : 'Read this answer aloud'}
+                              title={active ? 'Stop' : 'Listen'}
+                              aria-busy={loading}
+                            >
+                              {loading ? (
+                                <span className="listen-spinner" aria-hidden="true" />
+                              ) : active ? (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                                </svg>
+                              ) : (
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                  <path d="M11 5L6 9H3v6h3l5 4V5z" strokeLinejoin="round" />
+                                  <path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" strokeLinecap="round" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
 
                     {/* Main Readable Long-Form Answer */}
@@ -757,7 +1170,7 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                         ✦
                       </span>
                       <span className="assistant-name">
-                        Synthesizing grounded response for {empName} ({employeeId})...
+                        Thinking…
                       </span>
                     </div>
                   </div>
@@ -777,20 +1190,85 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
         {/* Prominent Message Composer (Inspired by Reference Image 1 & Claude) */}
         <div className="ai-composer-shell">
           <form onSubmit={handleSubmit} className="ai-composer-box">
-            <textarea
+            <MentionInput
               className="ai-composer-textarea"
-              rows={2}
-              placeholder={`Employee 360 AI is here to assist. Enter your question about ${empName} (${employeeId})...`}
+              placeholder={
+                voiceState === 'requesting'
+                  ? 'Waiting for microphone access…'
+                  : voiceState === 'recording' && recordingInWindow
+                  ? 'Speak in the voice recorder window, then tap its button to send…'
+                  : voiceState === 'recording'
+                  ? 'Listening… tap the microphone again to send, Esc to cancel'
+                  : voiceState === 'transcribing'
+                    ? 'Turning your speech into text…'
+                    : mentionable?.canMentionAll
+                      ? 'Ask or speak a question. Type @ for a person, # for a department, @all for everyone…'
+                      : 'Ask or speak a question about your own Employee 360 record…'
+              }
               value={questionInput}
-              onChange={(e) => setQuestionInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSubmit(e);
-                }
-              }}
-              disabled={effectiveLoading}
+              onChange={setQuestionInput}
+              mentionable={mentionable}
+              onToken={(token) => setPendingTokens((tokens) => [...tokens, token])}
+              onSubmit={() => void handleSubmit()}
+              disabled={effectiveLoading || voiceState !== 'idle'}
             />
+
+            {(voiceState !== 'idle' || voiceError) && (
+              <div className={`voice-status ${voiceError && voiceState === 'idle' ? 'is-error' : ''}`} role="status" aria-live="polite">
+                {voiceState === 'recording' && recordingInWindow && (
+                  <>
+                    <span className="voice-rec-dot" aria-hidden="true" />
+                    <span>
+                      Voice input can't start inside this Web Tab, so the voice recorder window is open: speak there,
+                      then tap its button to send.
+                    </span>
+                    <button type="button" className="voice-status-link" onClick={cancelRecording}>
+                      Cancel
+                    </button>
+                  </>
+                )}
+                {voiceState === 'recording' && !recordingInWindow && (
+                  <>
+                    <span className="voice-rec-dot" aria-hidden="true" />
+                    <span>
+                      Listening · 0:{String(recordingSeconds).padStart(2, '0')} / 0:{MAX_RECORDING_MS / 1000}
+                    </span>
+                    <button type="button" className="voice-status-link" onClick={cancelRecording}>
+                      Cancel
+                    </button>
+                  </>
+                )}
+                {voiceState === 'requesting' && (
+                  <>
+                    <span>Waiting for microphone access… allow it if your browser asks.</span>
+                    <button type="button" className="voice-status-link" onClick={cancelRecording}>
+                      Cancel
+                    </button>
+                  </>
+                )}
+                {voiceState === 'transcribing' && <span>Transcribing your question…</span>}
+                {voiceState === 'idle' && voiceError && (
+                  <>
+                    <span>{voiceError}</span>
+                    {voiceErrorAction === 'window' && (
+                      <button type="button" className="voice-status-link" onClick={recordWithWindow}>
+                        Open voice recorder
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="voice-status-link"
+                      onClick={() => {
+                        setVoiceError(null);
+                        setVoiceErrorAction(null);
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="ai-composer-toolbar">
               <div className="composer-left-actions">
@@ -857,34 +1335,44 @@ export const AIChatView: React.FC<AIChatViewProps> = ({
                   </span>
                 </span>
 
-                <button
-                  type="button"
-                  className="composer-icon-btn"
-                  title="Inspect Employee 360 Grounded Context"
-                  aria-label="Inspect Employee 360 Grounded Context"
-                  onClick={() => setContextDrawerOpen((prev) => !prev)}
-                >
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+                {voiceSupported && (
+                  <button
+                    type="button"
+                    className={`composer-icon-btn composer-mic-btn is-${voiceState}`}
+                    title={voiceState === 'recording' ? 'Stop and send' : 'Speak your question'}
+                    aria-label={
+                      voiceState === 'recording'
+                        ? 'Stop recording and send'
+                        : voiceState === 'transcribing'
+                          ? 'Transcribing'
+                          : voiceState === 'requesting'
+                            ? 'Waiting for microphone access'
+                            : 'Speak your question'
+                    }
+                    aria-pressed={voiceState === 'recording'}
+                    disabled={voiceState === 'transcribing' || voiceState === 'requesting' || recordingInWindow || (voiceState === 'idle' && effectiveLoading)}
+                    onClick={() => void handleMicClick()}
                   >
-                    <path
-                      d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                    {voiceState === 'transcribing' ? (
+                      <span className="listen-spinner" aria-hidden="true" />
+                    ) : voiceState === 'recording' ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <rect x="9" y="3" width="6" height="11" rx="3" />
+                        <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" strokeLinecap="round" />
+                      </svg>
+                    )}
+                  </button>
+                )}
 
                 <button
                   type="submit"
                   className="composer-send-btn"
-                  disabled={!questionInput.trim() || effectiveLoading}
-                  title="Send question to POST /v1/employees/{employeeId}/ask"
+                  disabled={!questionInput.trim() || effectiveLoading || voiceState !== 'idle'}
+                  title="Send question to POST /v1/ask"
                   aria-label="Send question"
                 >
                   <span>Ask AI</span>

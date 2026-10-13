@@ -9,6 +9,18 @@ import type {
 } from '../types/employee360';
 import { EmployeeAvatar } from './EmployeeAvatar';
 import { ConfidenceLabel, FieldValueDisplay, SemanticBadge } from './SemanticBadge';
+import {
+  appraisalKpi,
+  attendanceKpi,
+  emphasizeKeyFacts,
+  evidenceKpi,
+  formatDisplayDate,
+  leaveKpi,
+  learningKpi,
+  orNotRecorded,
+  tenureKpi,
+  type KpiView,
+} from '../services/displayFormat';
 
 interface DashboardViewProps {
   employeeId: string;
@@ -43,6 +55,24 @@ function renderBold(text: string): React.ReactNode[] {
     )
   );
 }
+
+/** One metric card: title, value (muted when the source has none), detail and semantic badge. */
+const MetricCard: React.FC<{ title: string; view: KpiView }> = ({ title, view }) => (
+  <article className={`metric-kpi-card ${view.missing ? 'is-missing' : ''}`}>
+    <div className="metric-card-top">
+      <span className="metric-card-title" title={title}>
+        {title}
+      </span>
+    </div>
+    <div className="metric-card-value" title={view.value}>
+      {view.value}
+    </div>
+    <div className="metric-card-sub">{view.sub}</div>
+    <div className="metric-card-foot">
+      <SemanticBadge classification={view.classification} />
+    </div>
+  </article>
+);
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   employeeId,
@@ -121,10 +151,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const org = canonical.organisation;
   const metrics = canonical.deterministicMetrics || {};
   const timelineEvents = timeline?.events || canonical.timeline || [];
-  const completedLearningCount =
-    (canonical.learning?.completedCourses?.length || 0) +
-    (canonical.learning?.certifications?.length || 0);
-  const enrolledCount = canonical.learning?.enrolledCourses?.length || 0;
+  // Verified record values the summary may mention, bolded when the summary has no bold of its own
+  const summaryTerms = [
+    emp.fullName,
+    employment.jobTitle,
+    org.department,
+    employment.workLocation,
+    org.reportingManagerName,
+  ];
 
   const showSection = (sec: DashboardSectionId) =>
     activeSection === 'overview' || activeSection === sec;
@@ -211,15 +245,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               <div className="emp-org-metadata">
                 <span>
-                  Department: <strong>{org.department || 'Unknown'}</strong>
+                  Department: <strong>{orNotRecorded(org.department)}</strong>
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>
-                  Location: <strong>{employment.workLocation || 'Unknown'}</strong>
+                  Location: <strong>{orNotRecorded(employment.workLocation)}</strong>
                 </span>
                 <span aria-hidden="true">·</span>
                 <span>
-                  Manager: <strong>{org.reportingManagerName || 'Unknown'}</strong>
+                  Manager: <strong>{orNotRecorded(org.reportingManagerName)}</strong>
                 </span>
               </div>
             </div>
@@ -245,13 +279,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="header-stat-box">
                 <span className="header-stat-label">TENURE</span>
                 <strong className="header-stat-value mono-num">
-                  {metrics.tenure?.formatted || 'Unknown'}
+                  {metrics.tenure?.formatted && metrics.tenure.formatted !== 'Unknown'
+                    ? metrics.tenure.formatted
+                    : 'Not recorded'}
                 </strong>
               </div>
               <div className="header-stat-box">
                 <span className="header-stat-label">DATE JOINED</span>
                 <strong className="header-stat-value mono-num">
-                  {employment.dateOfJoining || 'Unknown'}
+                  {formatDisplayDate(employment.dateOfJoining) || 'Not recorded'}
                 </strong>
               </div>
             </div>
@@ -260,119 +296,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* 6 Deterministic Metric Cards Row (Matching Reference Image 2) */}
         <section className="metrics-kpi-grid" aria-label="Employee 360 deterministic metrics">
-          {/* 1. Calculated Tenure */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">CALCULATED TENURE</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {metrics.tenure?.formatted || 'Unknown'}
-            </div>
-            <div className="metric-card-sub">
-              Joined: {employment.dateOfJoining || 'Unknown'}
-            </div>
-            <div className="metric-card-foot">
-              <SemanticBadge
-                classification={metrics.tenure?.classification || 'Unknown'}
-              />
-            </div>
-          </article>
-
-          {/* 2. Attendance */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">ATTENDANCE</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {metrics.attendancePercentage?.formatted || 'Unknown'}
-            </div>
-            <div className="metric-card-sub">
-              {canonical.attendance.presentDays !== null &&
-              canonical.attendance.totalWorkingDays !== null
-                ? `${canonical.attendance.presentDays} / ${canonical.attendance.totalWorkingDays} working days`
-                : 'No shift logs'}
-            </div>
-            <div className="metric-card-foot">
-              <SemanticBadge
-                classification={
-                  metrics.attendancePercentage?.classification || 'Unknown'
-                }
-              />
-            </div>
-          </article>
-
-          {/* 3. Leave Utilization */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">LEAVE UTILIZATION</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {metrics.leaveUtilization?.formatted || 'Unknown'}
-            </div>
-            <div className="metric-card-sub">
-              {canonical.leave.takenThisYear !== null
-                ? `${canonical.leave.takenThisYear} days taken this year`
-                : 'null days taken'}
-            </div>
-            <div className="metric-card-foot">
-              <SemanticBadge
-                classification={metrics.leaveUtilization?.classification || 'Unknown'}
-              />
-            </div>
-          </article>
-
-          {/* 4. Appraisal Rating */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">APPRAISAL RATING</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {metrics.performanceRating?.value !== null &&
-              metrics.performanceRating?.value !== undefined
-                ? `${metrics.performanceRating.value} / 5.0`
-                : 'Unknown'}
-            </div>
-            <div className="metric-card-sub">
-              {canonical.performance.currentReviewPeriod || 'Review cycle unrecorded'}
-            </div>
-            <div className="metric-card-foot">
-              <SemanticBadge
-                classification={
-                  metrics.performanceRating?.classification || 'Unknown'
-                }
-              />
-            </div>
-          </article>
-
-          {/* 5. Completed Learning */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">COMPLETED LEARNING</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {completedLearningCount} {completedLearningCount === 1 ? 'record' : 'records'}
-            </div>
-            <div className="metric-card-sub">
-              {enrolledCount} currently enrolled
-            </div>
-            <div className="metric-card-foot">
-              <SemanticBadge classification="Fact" />
-            </div>
-          </article>
-
-          {/* 6. Grounded Evidence */}
-          <article className="metric-kpi-card">
-            <div className="metric-card-top">
-              <span className="metric-card-title">GROUNDED EVIDENCE</span>
-            </div>
-            <div className="metric-card-value mono-num">
-              {canonical.evidence.length} Records
-            </div>
-            <div className="metric-card-sub">Verified source fields</div>
-            <div className="metric-card-foot">
-              <SemanticBadge classification="Fact" />
-            </div>
-          </article>
+          <MetricCard title="Calculated Tenure" view={tenureKpi(canonical)} />
+          <MetricCard title="Attendance" view={attendanceKpi(canonical)} />
+          <MetricCard title="Leave Utilization" view={leaveKpi(canonical)} />
+          <MetricCard title="Appraisal Rating" view={appraisalKpi(canonical)} />
+          <MetricCard title="Completed Learning" view={learningKpi(canonical)} />
+          <MetricCard title="Grounded Evidence" view={evidenceKpi(canonical)} />
         </section>
 
         {/* Employee 360 Summary Section (Matching Reference Image 2) */}
@@ -418,7 +347,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <div className="summary-paragraphs" id={`summary-body-${employeeId}`}>
               {visibleSummaryParagraphs.map((para, idx) => (
-                <p key={idx}>{renderBold(para)}</p>
+                <p key={idx}>{renderBold(emphasizeKeyFacts(para, summaryTerms))}</p>
               ))}
             </div>
 
