@@ -2,6 +2,11 @@
 
 const { ValidationError } = require('./errors');
 
+// Ask conversation history: accepted request size vs. the bounded window used.
+const ASK_HISTORY_MAX_ACCEPTED = 50;
+const ASK_HISTORY_TURNS_USED = 6;
+const ASK_HISTORY_TURN_MAX_CHARS = 1000;
+
 class Validation {
   static sanitizeString(input) {
     if (typeof input !== 'string') return '';
@@ -26,6 +31,14 @@ class Validation {
     return cleanId;
   }
 
+  static validateFormLinkName(formLinkName) {
+    const clean = typeof formLinkName === 'string' ? formLinkName.trim() : '';
+    if (!/^[A-Za-z0-9_]{1,100}$/.test(clean)) {
+      throw new ValidationError('formLinkName must contain only letters, digits and underscores (max 100)');
+    }
+    return clean;
+  }
+
   static validateAskPayload(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       throw new ValidationError('Request body must be a valid JSON object');
@@ -42,9 +55,88 @@ class Validation {
       throw new ValidationError("Question exceeds maximum permitted length of 500 characters");
     }
     return {
-      question: cleanQuestion
+      question: cleanQuestion,
+      history: Validation.validateAskHistory(body.history)
+    };
+  }
+
+  /**
+   * Optional prior turns of the conversation. Only the most recent turns are kept,
+   * each trimmed to a bounded length. History is untrusted text used to resolve
+   * references in the current question; it never carries data or permissions.
+   */
+  static validateAskHistory(history) {
+    if (history === undefined || history === null) return [];
+    if (!Array.isArray(history)) {
+      throw new ValidationError("Property 'history' must be an array of { role, content } turns");
+    }
+    if (history.length > ASK_HISTORY_MAX_ACCEPTED) {
+      throw new ValidationError(`Property 'history' may contain at most ${ASK_HISTORY_MAX_ACCEPTED} turns`);
+    }
+
+    const turns = history.map((turn, index) => {
+      if (!turn || typeof turn !== 'object' || Array.isArray(turn)) {
+        throw new ValidationError(`history[${index}] must be an object`);
+      }
+      if (turn.role !== 'user' && turn.role !== 'assistant') {
+        throw new ValidationError(`history[${index}].role must be 'user' or 'assistant'`);
+      }
+      if (typeof turn.content !== 'string') {
+        throw new ValidationError(`history[${index}].content must be a string`);
+      }
+      return { role: turn.role, content: turn.content.trim().slice(0, ASK_HISTORY_TURN_MAX_CHARS) };
+    });
+
+    return turns.filter(turn => turn.content.length > 0).slice(-ASK_HISTORY_TURNS_USED);
+  }
+
+  /** POST /v1/ask: the Ask payload plus optional @/# mentions. */
+  static validateAskAllPayload(body) {
+    const { question, history } = Validation.validateAskPayload(body);
+    let language = null;
+    if (body.language !== undefined && body.language !== null) {
+      if (typeof body.language !== 'string' || !/^[a-z]{2}-IN$/.test(body.language)) {
+        throw new ValidationError("'language' must be a code such as 'hi-IN'");
+      }
+      language = body.language;
+    }
+    return { question, history, mentions: Validation.validateMentions(body.mentions), language };
+  }
+
+  /**
+   * Mentions chosen in the chat: employee IDs (@person), department names
+   * (#department) and `all` (@all). Shape only; scope is checked separately.
+   */
+  static validateMentions(raw) {
+    if (raw === undefined || raw === null) return { employeeIds: [], departments: [], all: false };
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new ValidationError("Property 'mentions' must be an object");
+    }
+    const ids = raw.employeeIds === undefined ? [] : raw.employeeIds;
+    const departments = raw.departments === undefined ? [] : raw.departments;
+    if (!Array.isArray(ids) || ids.length > MAX_MENTIONED_EMPLOYEES) {
+      throw new ValidationError(`'mentions.employeeIds' must be an array of at most ${MAX_MENTIONED_EMPLOYEES} IDs`);
+    }
+    if (!Array.isArray(departments) || departments.length > MAX_MENTIONED_DEPARTMENTS) {
+      throw new ValidationError(`'mentions.departments' must be an array of at most ${MAX_MENTIONED_DEPARTMENTS} names`);
+    }
+    if (raw.all !== undefined && typeof raw.all !== 'boolean') {
+      throw new ValidationError("'mentions.all' must be true or false");
+    }
+    return {
+      employeeIds: [...new Set(ids.map(id => Validation.validateEmployeeId(id)))],
+      departments: [...new Set(departments.map(name => {
+        if (typeof name !== 'string' || !name.trim() || name.length > 100) {
+          throw new ValidationError('Each mentioned department must be a non-empty name of at most 100 characters');
+        }
+        return name.trim();
+      }))],
+      all: raw.all === true
     };
   }
 }
+
+const MAX_MENTIONED_EMPLOYEES = 25;
+const MAX_MENTIONED_DEPARTMENTS = 10;
 
 module.exports = Validation;

@@ -9,7 +9,7 @@
       {
         "location": "people.home",
         "name": "Zoho People Extension",
-        "url": "/app/index.html",
+        "url": "/app/widget.html",
         "logo": ""
       }
     ]
@@ -17,8 +17,6 @@
   "config": [],
   "connectors": [],
   "cspDomains": {
-  "connect-src": [
-    "https://employee360-ai-60085182165.development.catalystserverless.in"
-  ]
-}
+    "connect-src": ["https://employee360-ai-60085182165.development.catalystserverless.in"]
+  }
 }

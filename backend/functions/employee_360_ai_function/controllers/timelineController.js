@@ -12,11 +12,11 @@ class TimelineController {
 
   async handle(req, res, params, context) {
     const employeeId = Validation.validateEmployeeId(params.employeeId);
-    AuthorizationBoundary.enforceEmployeeScope(context, employeeId);
-
+    AuthorizationBoundary.authorizeEmployee(context, employeeId);
     const data = await this.service.getEmployeeTimeline(employeeId, context);
     HttpUtils.sendSuccess(res, data, { employeeId });
   }
 }
 
 module.exports = TimelineController;
+

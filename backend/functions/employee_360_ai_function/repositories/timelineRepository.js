@@ -1,7 +1,9 @@
 'use strict';
 
-const crypto = require('crypto');
 const { DATASTORE_TABLE_IDS } = require('../config/constants');
+const DateUtils = require('../utils/dates');
+const { buildTimelineEventId } = require('../utils/identifiers');
+const TimelineIntelligenceService = require('../intelligence/timelineService');
 const Logger = require('../utils/logger');
 
 class TimelineRepository {
@@ -33,48 +35,31 @@ class TimelineRepository {
     return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
   }
 
-  _formatDateTime(value) {
-    if (!value) return null;
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return null;
-    }
-
-    return date.toISOString()
-      .slice(0, 19)
-      .replace('T', ' ');
+  /**
+   * Stored eventDate keeps the calendar date exactly as the source gave it;
+   * no timezone conversion is applied.
+   */
+  _toStoredDate(isoDate) {
+    return isoDate ? `${isoDate} 00:00:00` : null;
   }
 
-  _buildEventId({
-    tenantId,
-    employeeId,
-    eventType,
-    eventDate,
-    sourceRecordId
-  }) {
-    const identity = [
-      tenantId,
-      employeeId,
-      eventType,
-      eventDate,
-      sourceRecordId || ''
-    ].join('|');
-
-    return crypto
-      .createHash('sha256')
-      .update(identity)
-      .digest('hex');
-  }
-
+  /**
+   * Maps a stored row to the API event shape. Rows whose eventType is not a known
+   * event code (legacy rows written before stable IDs) return null.
+   */
   _mapStoredEvent(row) {
+    const definition = TimelineIntelligenceService.definitions[row.eventType];
+    const date = DateUtils.toIsoDate(row.eventDate);
+    if (!definition || !date) return null;
+
     return {
       id: row.eventId,
-      type: row.eventType,
-      title: row.eventType,
-      date: row.eventDate,
+      eventCode: row.eventType,
+      type: definition.type,
+      title: definition.title,
+      date,
       description: row.description || null,
+      domain: definition.domain,
       source: row.source || null,
       sourceRecordId: row.sourceRecordId || null
     };
@@ -135,9 +120,13 @@ class TimelineRepository {
       const result = await app.zcql().executeZCQLQuery(query);
 
       if (Array.isArray(result)) {
-        return result.map(row =>
-          this._mapStoredEvent(row.TimelineEvents || row)
-        );
+        const rows = result.map(row => row.TimelineEvents || row);
+        const mapped = rows.map(row => this._mapStoredEvent(row));
+        const legacy = mapped.filter(event => event === null).length;
+        if (legacy > 0) {
+          Logger.warn('Ignoring timeline rows without a known event code', { employeeId, legacy });
+        }
+        return mapped.filter(Boolean);
       }
     } catch (err) {
       Logger.warn('TimelineRepository ZCQL query error', {
@@ -150,29 +139,30 @@ class TimelineRepository {
     return [];
   }
 
+  /**
+   * Upserts one generated timeline event. The event's own deterministic `id` is the
+   * row key; it is recomputed only when absent, with the same identity function.
+   */
   async recordEvent(eventData, context = null) {
     const tenantId = context?.tenantId || 'vsk_hr_solution';
-    const employeeId = String(
-      eventData.employeeId ||
-      context?.employeeId ||
-      ''
-    );
+    const employeeId = String(eventData.employeeId || context?.employeeId || '');
+    const eventCode = eventData.eventCode;
+    const eventDate = DateUtils.toIsoDate(eventData.date || eventData.eventDate);
 
-    const eventType = eventData.type || eventData.eventType || 'GENERAL';
-    const eventDate = this._formatDateTime(
-      eventData.date || eventData.eventDate
-    );
+    if (!eventCode || !TimelineIntelligenceService.definitions[eventCode]) {
+      throw new Error('Timeline event requires a known event code');
+    }
 
     if (!eventDate) {
       throw new Error('Timeline event requires a valid event date');
     }
 
-    const sourceRecordId = eventData.sourceRecordId || eventData.id || null;
+    const sourceRecordId = eventData.sourceRecordId ? String(eventData.sourceRecordId) : null;
 
-    const eventId = this._buildEventId({
+    const eventId = eventData.id || buildTimelineEventId({
       tenantId,
       employeeId,
-      eventType,
+      eventCode,
       eventDate,
       sourceRecordId
     });
@@ -181,21 +171,12 @@ class TimelineRepository {
       eventId,
       tenantId,
       employeeId,
-      eventType,
-      eventDate,
+      eventType: eventCode,
+      eventDate: this._toStoredDate(eventDate),
       description: eventData.description || null,
       source: eventData.source || 'employee_360',
-      sourceRecordId: sourceRecordId
-        ? String(sourceRecordId)
-        : null
+      sourceRecordId
     };
-
-    Logger.info('Persisting timeline event', {
-      tableId: this.tableId,
-      tenantId,
-      employeeId,
-      eventId
-    });
 
     const app = this._getCatalystApp(context?.req);
 
@@ -207,6 +188,17 @@ class TimelineRepository {
     const existingRow = await this._findByEventId(eventId, context);
 
     if (existingRow?.ROWID) {
+      const unchanged =
+        existingRow.eventType === row.eventType &&
+        DateUtils.toIsoDate(existingRow.eventDate) === eventDate &&
+        (existingRow.description || null) === row.description &&
+        (existingRow.source || null) === row.source &&
+        (existingRow.sourceRecordId || null) === row.sourceRecordId;
+
+      if (unchanged) {
+        return existingRow;
+      }
+
       const result = await table.updateRow({
         ROWID: existingRow.ROWID,
         ...row

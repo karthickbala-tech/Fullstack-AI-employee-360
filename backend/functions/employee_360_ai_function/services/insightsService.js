@@ -10,7 +10,7 @@ class InsightsService {
   }
 
   async getEmployeeInsights(employeeId, context) {
-    const canonical = await this.employee360Service.getCanonical360(employeeId, context);
+    const canonical = await this.employee360Service.getCanonical360(employeeId, context, { persist: false });
     const insights = await this.insightGenerator.generateInsights(canonical);
 
     return {

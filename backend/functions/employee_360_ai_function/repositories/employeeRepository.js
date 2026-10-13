@@ -102,6 +102,7 @@ class EmployeeRepository {
       email: employeeRecord.email || null,
       status: employeeRecord.status || null,
       sourceEmployeeId: String(employeeRecord.sourceEmployeeId),
+      reportingManagerId: employeeRecord.reportingManagerId || null,
       createdAt: employeeRecord.createdAt
   ? this._formatDateTime(employeeRecord.createdAt)
   : now,
@@ -129,6 +130,15 @@ class EmployeeRepository {
     );
 
     if (existingRow?.ROWID) {
+      const comparedColumns = ['employeeNumber', 'firstName', 'lastName', 'email', 'status', 'sourceEmployeeId', 'reportingManagerId'];
+      const unchanged = comparedColumns.every(
+        column => (existingRow[column] ?? null) === (rowData[column] ?? null)
+      );
+
+      if (unchanged) {
+        return existingRow;
+      }
+
       const updateData = {
         ...rowData,
         createdAt: existingRow.createdAt || rowData.createdAt

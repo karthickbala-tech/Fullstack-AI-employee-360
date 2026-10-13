@@ -5,6 +5,8 @@ const SENSITIVE_KEYS = [
   'api_key',
   'apikey',
   'gemini_api_key',
+  'sarvam_api_key',
+  'api-subscription-key',
   'token',
   'accesstoken',
   'access_token',

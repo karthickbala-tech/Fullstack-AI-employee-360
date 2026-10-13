@@ -4,7 +4,9 @@ const ZohoPeopleEmployeeService = require('../connectors/zohoPeople/zohoPeopleEm
 const Employee360Builder = require('../intelligence/employee360Builder');
 const Employee360Repository = require('../repositories/employee360Repository');
 const EvidenceRepository = require('../repositories/evidenceRepository');
+const AuthorizationBoundary = require('../middleware/authorization');
 const Logger = require('../utils/logger');
+const { NotFoundError } = require('../utils/errors');
 
 class Employee360Service {
   constructor() {
@@ -13,17 +15,28 @@ class Employee360Service {
     this.evidenceRepository = new EvidenceRepository();
   }
 
-  async getCanonical360(employeeId, context) {
+  /**
+   * Builds the canonical Employee 360 from live Zoho People data. With
+   * `persist: false` the snapshot and evidence are not written: read paths that
+   * only need the data (Ask, summary, insights, timeline) skip the Data Store
+   * writes, while GET /360 keeps the stored snapshot current.
+   */
+  async getCanonical360(employeeId, context, { persist = true } = {}) {
     Logger.info('Orchestrating Employee 360 build', {
       employeeId,
       requestId: context.requestId
     });
 
-    // 1. Fetch raw data from Zoho People connector
+    // 1. Fetch raw data from Zoho People connector.
+    //    Upstream failures propagate as mapped API errors; an unknown employee is a 404.
     const rawData = await this.zohoService.getEmployeeRawData(
       employeeId,
       context
     );
+
+    if (!rawData || rawData.available !== true) {
+      throw new NotFoundError(`Employee '${employeeId}' was not found in Zoho People`);
+    }
 
     // 2. Build normalized Canonical Model with deterministic metrics,
     //    timeline and evidence
@@ -31,6 +44,10 @@ class Employee360Service {
       employeeId,
       rawData
     );
+
+    if (!persist) {
+      return AuthorizationBoundary.filterAllowedFields(context, canonical);
+    }
 
     // 3. Persist Employee360 canonical snapshot
     try {
@@ -56,9 +73,9 @@ class Employee360Service {
           ...item,
           employeeId,
           sourceRecordId:
-            item.sourceRecordId ||
-            canonical.metadata?.employeeId ||
-            employeeId,
+  item.sourceRecordId !== undefined
+    ? item.sourceRecordId
+    : canonical.metadata?.sourceRecordId || null,
           observedAt:
             item.sourceTimestamp || null
         }));
@@ -83,7 +100,9 @@ class Employee360Service {
       });
     }
 
-    return canonical;
+    // Consumers (API, summary, insights, Ask and its AI context) only ever see
+    // the permitted domains; the stored snapshot keeps the full source record.
+    return AuthorizationBoundary.filterAllowedFields(context, canonical);
   }
 }
 

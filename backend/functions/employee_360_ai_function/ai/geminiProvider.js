@@ -11,6 +11,12 @@ const CANDIDATE_MODELS = [
   'gemini-3.1-flash-lite'
 ];
 
+// Total time allowed for Gemini across all candidate models in one request. Catalyst
+// terminates the function at its execution limit (observed: HTTP 408 EXECUTION_TIME_EXCEEDED
+// after ~30s) and the frontend aborts at 20s, so an unbounded Gemini call turns the whole
+// request into an error instead of the deterministic fallback the generators already provide.
+const GEMINI_TIME_BUDGET_MS = 15000;
+
 class GeminiProvider extends AIProvider {
   constructor(model = null) {
     super();
@@ -32,16 +38,30 @@ class GeminiProvider extends AIProvider {
       ],
       generationConfig: {
         temperature: options.temperature !== undefined ? options.temperature : 0.2,
-        maxOutputTokens: options.maxOutputTokens || 1024
-      }
+        maxOutputTokens: options.maxOutputTokens || 1024,
+        ...(options.responseMimeType ? { responseMimeType: options.responseMimeType } : {})
+      },
+      // Rules travel separately from user-supplied text, so the question and
+      // conversation cannot pose as instructions.
+      ...(options.systemInstruction
+        ? { systemInstruction: { parts: [{ text: options.systemInstruction }] } }
+        : {})
     };
 
     const modelsToTry = [this.model, ...CANDIDATE_MODELS.filter(m => m !== this.model)];
     let lastError = null;
+    const deadline = Date.now() + (options.timeBudgetMs || GEMINI_TIME_BUDGET_MS);
 
     for (const modelName of modelsToTry) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        Logger.warn('Gemini time budget exhausted; skipping remaining candidate models', { model: modelName });
+        break;
+      }
+
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
 
+      const startedAt = Date.now();
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -50,7 +70,8 @@ class GeminiProvider extends AIProvider {
             'x-goog-api-key': apiKey,
             'User-Agent': 'aistudio-build'
           },
-          body: JSON.stringify(requestPayload)
+          body: JSON.stringify(requestPayload),
+          signal: AbortSignal.timeout(remainingMs)
         });
 
         if (!response.ok) {
@@ -61,6 +82,16 @@ class GeminiProvider extends AIProvider {
         }
 
         const result = await response.json();
+
+        // One line per billed Gemini call: model, latency and token usage.
+        // No prompt or response content is logged.
+        Logger.info('Gemini call completed', {
+          model: modelName,
+          durationMs: Date.now() - startedAt,
+          finishReason: result.candidates?.[0]?.finishReason || null,
+          usage: result.usageMetadata || null
+        });
+
         const candidate = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!candidate) {
           throw new AIProviderError(`Gemini model ${modelName} returned an empty candidate`);
@@ -70,7 +101,10 @@ class GeminiProvider extends AIProvider {
         return candidate.trim();
       } catch (err) {
         lastError = err;
-        Logger.warn(`Gemini model ${modelName} attempt error:`, { message: err.message });
+        Logger.warn(`Gemini model ${modelName} attempt error:`, {
+          message: err.message,
+          timedOut: err.name === 'TimeoutError'
+        });
       }
     }
 

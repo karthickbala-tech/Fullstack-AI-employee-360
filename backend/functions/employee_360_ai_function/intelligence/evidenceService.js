@@ -1,10 +1,17 @@
-'use strict';
+﻿'use strict';
 
 const EvidenceItem = require('../models/evidenceModel');
 const { DATA_CLASSIFICATION } = require('../config/constants');
 
 class EvidenceService {
-  static extractEvidence(canonical) {
+  /** Leave types with at least one recorded number; others carry no claim. */
+  static recordedLeaveBalances(canonical) {
+    const rows = Array.isArray(canonical?.leave?.balance) ? canonical.leave.balance : [];
+    return rows.filter(row => row && typeof row.type === 'string' && row.type.trim() &&
+      [row.entitled, row.taken, row.balance].some(Number.isFinite));
+  }
+
+  static extractEvidence(canonical, lifecycleData = {}) {
     const evidenceList = [];
 
     if (canonical.employee?.email) {
@@ -51,7 +58,134 @@ class EvidenceService {
         canonical.deterministicMetrics.tenure.formatted;
     }
 
-    if (canonical.performance?.overallRating !== null) {
+    // Metrics calculated from source counts; evidence only when the calculation succeeded.
+    const calculatedMetrics = [
+      {
+        domain: 'attendance',
+        field: 'attendancePercentage',
+        metric: canonical.deterministicMetrics?.attendancePercentage,
+        source: 'Calculated from Zoho People attendance summary',
+        notes: 'Attendance percentage calculated deterministically from present and total working days.'
+      },
+      {
+        domain: 'leave',
+        field: 'leaveUtilization',
+        metric: canonical.deterministicMetrics?.leaveUtilization,
+        source: 'Calculated from Zoho People leave balances',
+        notes: 'Leave utilization calculated deterministically from leave taken and entitled.'
+      }
+    ];
+
+    for (const item of calculatedMetrics) {
+      if (!item.metric || item.metric.value === null || item.metric.value === undefined) continue;
+
+      evidenceList.push(new EvidenceItem({
+        domain: item.domain,
+        field: item.field,
+        source: item.source,
+        classification: DATA_CLASSIFICATION.CALCULATION,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: item.notes
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = item.metric.formatted;
+    }
+
+    // Per-type leave balances as Zoho People reports them (entitled, taken, left).
+    const leaveBalances = EvidenceService.recordedLeaveBalances(canonical);
+    if (leaveBalances.length > 0) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'leave',
+        field: 'balance',
+        source: 'Zoho People leave balances',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Leave entitled, taken and remaining per leave type, directly obtained from Zoho People.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = leaveBalances.length;
+    }
+
+    // Source values that trends are derived from.
+    if (Number.isFinite(canonical.attendance?.lateDays)) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'attendance',
+        field: 'lateDays',
+        source: 'Zoho People attendance summary',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Late check-in count directly obtained from the Zoho People attendance summary.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = canonical.attendance.lateDays;
+    }
+
+    if (Array.isArray(canonical.performance?.historicalRatings) && canonical.performance.historicalRatings.length >= 2) {
+      evidenceList.push(new EvidenceItem({
+        domain: 'performance',
+        field: 'historicalRatings',
+        source: 'Zoho People Appraisal Module',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: 'Appraisal ratings for consecutive review periods directly obtained from the performance source.'
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = canonical.performance.historicalRatings.length;
+    }
+
+    // Employee form fields copied verbatim into the canonical model; evidence
+    // exists only when Zoho People actually supplied the value.
+    const employeeFormFields = [
+      {
+        domain: 'organisation',
+        field: 'department',
+        value: canonical.organisation?.department,
+        notes: 'Department directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'employment',
+        field: 'jobTitle',
+        value: canonical.employment?.jobTitle,
+        notes: 'Designation directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'employment',
+        field: 'employmentStatus',
+        value: canonical.employment?.employmentStatus,
+        notes: 'Employee status directly obtained from Zoho People employee record.'
+      },
+      {
+        domain: 'organisation',
+        field: 'reportingManagerName',
+        value: canonical.organisation?.reportingManagerName,
+        notes: 'Reporting To value directly obtained from Zoho People employee record.'
+      }
+    ];
+
+    for (const item of employeeFormFields) {
+      if (!item.value) continue;
+
+      evidenceList.push(new EvidenceItem({
+        domain: item.domain,
+        field: item.field,
+        source: 'Zoho People (Employee Form)',
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: canonical.metadata.employeeId,
+        confidence: 'high',
+        notes: item.notes
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = item.value;
+    }
+
+    if (
+      canonical.performance?.overallRating !== null &&
+      canonical.performance?.overallRating !== undefined
+    ) {
       evidenceList.push(new EvidenceItem({
         domain: 'performance',
         field: 'overallRating',
@@ -64,6 +198,49 @@ class EvidenceService {
 
       evidenceList[evidenceList.length - 1].value =
         canonical.performance.overallRating;
+    }
+
+    const lifecycleEvidence = [
+      {
+        formLinkName: 'zp_resignation',
+        field: 'resignationInitiated',
+        note: 'A matching resignation record was directly obtained from the Zoho People resignation form.'
+      },
+      {
+        formLinkName: 'zp_termination',
+        field: 'terminationRecorded',
+        note: 'A matching termination record was directly obtained from the Zoho People termination form.'
+      },
+      {
+        formLinkName: 'zp_deceased',
+        field: 'deceasedRecorded',
+        note: 'A matching deceased lifecycle record was directly obtained from the Zoho People deceased form.'
+      },
+      {
+        formLinkName: 'exitinterview',
+        field: 'separationRecorded',
+        note: 'A matching separation record was directly obtained from the Zoho People exit interview form.'
+      }
+    ];
+
+    for (const item of lifecycleEvidence) {
+      const form = lifecycleData?.[item.formLinkName];
+
+      if (!Array.isArray(form?.records) || form.records.length === 0) {
+        continue;
+      }
+
+      evidenceList.push(new EvidenceItem({
+        domain: 'lifecycle',
+        field: item.field,
+        source: `Zoho People (${item.formLinkName} Form)`,
+        classification: DATA_CLASSIFICATION.FACT,
+        sourceRecordId: null,
+        confidence: 'high',
+        notes: item.note
+      }).toJSON());
+
+      evidenceList[evidenceList.length - 1].value = true;
     }
 
     return evidenceList;

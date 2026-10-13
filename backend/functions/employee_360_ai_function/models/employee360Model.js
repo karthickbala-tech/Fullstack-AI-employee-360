@@ -5,6 +5,7 @@ class Employee360Model {
     return {
       metadata: {
         employeeId,
+        sourceRecordId: null,
         schemaVersion: '1.0.0',
         builtAt: new Date().toISOString(),
         tenantId: 'vsk_hr_solution'
@@ -38,17 +39,17 @@ class Employee360Model {
       },
       attendance: {
         summaryPeriod: null,
-        totalWorkingDays: 0,
-        presentDays: 0,
-        absentDays: 0,
-        lateDays: 0,
-        attendancePercentage: 0,
+        totalWorkingDays: null,
+        presentDays: null,
+        absentDays: null,
+        lateDays: null,
+        attendancePercentage: null,
         recentPunches: []
       },
       leave: {
         balance: [],
-        takenThisYear: 0,
-        pendingApprovals: 0,
+        takenThisYear: null,
+        pendingApprovals: null,
         recentRequests: []
       },
       performance: {
@@ -60,9 +61,9 @@ class Employee360Model {
         reviewStatus: null
       },
       goals: {
-        totalGoals: 0,
-        completedGoals: 0,
-        inProgressGoals: 0,
+        totalGoals: null,
+        completedGoals: null,
+        inProgressGoals: null,
         items: []
       },
       skills: {
@@ -81,9 +82,9 @@ class Employee360Model {
         aspirations: null
       },
       lifecycle: {
-        onboardingCompleted: true,
-        currentStage: 'Active',
-        exitInitiated: false,
+        onboardingCompleted: null,
+        currentStage: null,
+        exitInitiated: null,
         exitDate: null
       },
       deterministicMetrics: {},

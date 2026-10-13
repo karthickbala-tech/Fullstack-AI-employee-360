@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const url = require('url');
 const { NotFoundError, AppError } = require('../utils/errors');
@@ -12,6 +12,9 @@ const InsightsController = require('../controllers/insightsController');
 const TimelineController = require('../controllers/timelineController');
 const AskController = require('../controllers/askController');
 const ZohoPeopleController = require('../controllers/zohoPeopleController');
+const MeController = require('../controllers/meController');
+const AskAllController = require('../controllers/askAllController');
+const VoiceController = require('../controllers/voiceController');
 
 const employee360Controller = new Employee360Controller();
 const summaryController = new SummaryController();
@@ -19,40 +22,89 @@ const insightsController = new InsightsController();
 const timelineController = new TimelineController();
 const askController = new AskController();
 const zohoPeopleController = new ZohoPeopleController();
+const meController = new MeController();
+const askAllController = new AskAllController();
+const voiceController = new VoiceController();
+
+// Read routes accept GET, and POST so the Web Tab can carry its identity
+// assertion in a text/plain body (no CORS preflight; see
+// AuthorizationBoundary.takeCredentials). Handlers are the same for both.
+const READ_METHODS = ['GET', 'POST'];
 
 const routes = [
   {
-    method: 'GET',
+    method: 'POST',
+    pattern: /^\/v1\/ask\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => askAllController.handle(req, res, params, ctx)
+  },
+  {
+    method: 'POST',
+    pattern: /^\/v1\/voice\/transcribe\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => voiceController.transcribe(req, res, params, ctx)
+  },
+  {
+    method: 'POST',
+    pattern: /^\/v1\/voice\/speak\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => voiceController.speak(req, res, params, ctx)
+  },
+  {
+    method: READ_METHODS,
+    pattern: /^\/v1\/me\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => meController.handle(req, res, params, ctx)
+  },
+  {
+    method: READ_METHODS,
     pattern: /^\/v1\/zoho\/status\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => zohoPeopleController.getStatus(req, res, params, ctx)
   },
   {
     method: 'GET',
+    pattern: /^\/v1\/zoho\/forms\/?$/,
+    paramNames: [],
+    handler: (req, res, params, ctx) => zohoPeopleController.getForms(req, res, params, ctx)
+  },
+  {
+    method: 'GET',
+    pattern: /^\/v1\/zoho\/forms\/([^/]+)\/components\/?$/,
+    paramNames: ['formLinkName'],
+    handler: (req, res, params, ctx) => zohoPeopleController.getFormComponents(req, res, params, ctx)
+  },
+  {
+    method: 'GET',
+    pattern: /^\/v1\/zoho\/forms\/([^/]+)\/records\/?$/,
+    paramNames: ['formLinkName'],
+    handler: (req, res, params, ctx) => zohoPeopleController.getFormRecords(req, res, params, ctx)
+  },  {
+    method: READ_METHODS,
     pattern: /^\/v1\/zoho\/employees\/?$/,
     paramNames: [],
     handler: (req, res, params, ctx) => zohoPeopleController.getEmployees(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/360\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => employee360Controller.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/summary\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => summaryController.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/insights\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => insightsController.handle(req, res, params, ctx)
   },
   {
-    method: 'GET',
+    method: READ_METHODS,
     pattern: /^\/v1\/employees\/([^/]+)\/timeline\/?$/,
     paramNames: ['employeeId'],
     handler: (req, res, params, ctx) => timelineController.handle(req, res, params, ctx)
@@ -66,16 +118,31 @@ const routes = [
 ];
 
 class Router {
-  static async dispatch(req, res, context) {
-    const parsedUrl = url.parse(req.url, true);
+  static normalizePath(req) {
+    const parsedUrl = url.parse(req.url || '/', true);
     let pathname = parsedUrl.pathname || '/';
-    const method = req.method ? req.method.toUpperCase() : 'GET';
 
     // Normalize Catalyst serverless function prefix if present:
     pathname = pathname.replace(/^\/server\/employee_360_ai_function(\/|$)/, '/');
     if (!pathname.startsWith('/')) {
       pathname = '/' + pathname;
     }
+    return pathname;
+  }
+
+  /**
+   * Only the service identification and health routes are reachable without
+   * authentication.
+   */
+  static isPublicRequest(req) {
+    const method = req.method ? req.method.toUpperCase() : 'GET';
+    const pathname = this.normalizePath(req);
+    return method === 'GET' && (pathname === '/' || pathname === '' || pathname === '/health');
+  }
+
+  static async dispatch(req, res, context) {
+    const pathname = this.normalizePath(req);
+    const method = req.method ? req.method.toUpperCase() : 'GET';
 
     // Root Identification Route
     if (pathname === '/' || pathname === '') {
@@ -113,9 +180,10 @@ class Router {
       const match = pathname.match(route.pattern);
       if (match) {
         matchedPath = true;
-        if (route.method !== method) {
+        const methods = [].concat(route.method);
+        if (!methods.includes(method)) {
           throw new AppError(
-            `Method ${method} not allowed for route ${pathname}. Expected ${route.method}`,
+            `Method ${method} not allowed for route ${pathname}. Expected ${methods.join(' or ')}`,
             ERROR_CODES.VALIDATION_ERROR,
             HTTP_STATUS.METHOD_NOT_ALLOWED
           );
@@ -138,4 +206,5 @@ class Router {
 }
 
 module.exports = Router;
+
 
